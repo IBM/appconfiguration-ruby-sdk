@@ -16,9 +16,6 @@
 /vendor/bundle
 /lib/bundler/man/
 
-# Gemfile.lock (keep for apps, ignore for libraries)
-# Gemfile.lock
-
 # IRB
 .irbrc
 
@@ -64,3 +61,7 @@ yarn-debug.log*
 *.swo
 *~
 .DS_Store
+
+/.yardoc
+/_yardoc/
+/doc/

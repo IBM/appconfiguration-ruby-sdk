@@ -1,0 +1,55 @@
+AllCops:
+  TargetRubyVersion: 3.2
+Style/ConditionalAssignment:
+  EnforcedStyle: assign_to_condition
+  SupportedStyles:
+    - assign_to_condition
+    - assign_inside_condition
+  SingleLineConditionsOnly: true
+  IncludeTernaryExpressions: true
+  Enabled: false
+Style/RaiseArgs:
+  EnforcedStyle: compact
+  SupportedStyles:
+    - compact # raise Exception.new(msg)
+    - exploded # raise Exception, msg
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+  SupportedStyles:
+    - single_quotes
+    - double_quotes
+  ConsistentQuotesInMultiline: false
+  Enabled: true
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+  SupportedStyles:
+    - single_quotes
+    - double_quotes
+Metrics/AbcSize:
+  Enabled: false
+Metrics/BlockLength:
+  Enabled: false
+Metrics/BlockNesting:
+  Enabled: false
+Metrics/ClassLength:
+  Enabled: false
+Metrics/CyclomaticComplexity:
+  Enabled: false
+Layout/LineLength:
+  Max: 160
+  AllowHeredoc: true
+  AllowURI: true
+  URISchemes:
+    - http
+    - https
+  IgnoreCopDirectives: false
+  AllowedPatterns: [ ]
+  Enabled: false
+Metrics/MethodLength:
+  Enabled: false
+Metrics/ModuleLength:
+  Enabled: false
+Metrics/ParameterLists:
+  Enabled: false
+Metrics/PerceivedComplexity:
+  Enabled: false
