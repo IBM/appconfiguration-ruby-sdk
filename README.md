@@ -26,13 +26,13 @@ the cloud to activate or deactivate features in your application or environment,
 Installation is done using the `gem install` command or by adding it to your Gemfile.
 
 ```bash
-gem install ibm-appconfiguration-ruby-sdk
+gem install ibm_appconfiguration_ruby_sdk
 ```
 
 Or add this line to your application's Gemfile:
 
 ```ruby
-gem 'ibm-appconfiguration-ruby-sdk'
+gem 'ibm_appconfiguration_ruby_sdk'
 ```
 
 And then execute:
@@ -46,7 +46,7 @@ bundle install
 To import the module:
 
 ```ruby
-require 'ibm-appconfiguration-ruby-sdk'
+require 'ibm_appconfiguration_ruby_sdk'
 ```
 
 ## Usage
@@ -54,10 +54,10 @@ require 'ibm-appconfiguration-ruby-sdk'
 Initialize the SDK to connect with your App Configuration service instance.
 
 ```ruby
-require 'ibm-appconfiguration-ruby-sdk'
+require 'ibm_appconfiguration_ruby_sdk'
 
 # Get the singleton instance
-app_config_client = AppConfiguration.instance
+app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
 region = 'us-south'
 guid = '<guid>'
@@ -73,7 +73,7 @@ app_config_client.init(region, guid, apikey)
 
 # Set context
 app_config_client.set_context(collection_id, environment_id)
-
+```
 
 > :warning: It is expected that initialization to be done **only once**.
 
@@ -306,10 +306,10 @@ end
 <details><summary>Full example:</summary>
 
 ```ruby
-require 'ibm-appconfiguration-ruby-sdk'
+require 'ibm_appconfiguration_ruby_sdk'
 require 'ibm_secrets_manager_sdk'
 
-app_config_client = AppConfiguration.instance
+app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
 begin
   app_config_client.init(region, guid, apikey)
@@ -356,9 +356,9 @@ Once the SDK is initialized, the app_config_client can be obtained across other 
 ```ruby
 # **other modules**
 
-require 'ibm-appconfiguration-ruby-sdk'
+require 'ibm_appconfiguration_ruby_sdk'
 
-app_config_client = AppConfiguration.instance
+app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
 feature = app_config_client.get_feature('online-check-in')
 enabled = feature.is_enabled?
