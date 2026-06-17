@@ -26,13 +26,13 @@ the cloud to activate or deactivate features in your application or environment,
 Installation is done using the `gem install` command or by adding it to your Gemfile.
 
 ```bash
-gem install ibm_appconfiguration_ruby_sdk
+gem install ibm_appconfiguration_ruby_sdk --pre
 ```
 
 Or add this line to your application's Gemfile:
 
 ```ruby
-gem 'ibm_appconfiguration_ruby_sdk'
+gem "ibm_appconfiguration_ruby_sdk", "0.1.0.pre.rc.0"
 ```
 
 And then execute:
@@ -46,7 +46,7 @@ bundle install
 To import the module:
 
 ```ruby
-require 'ibm_appconfiguration_ruby_sdk'
+require "ibm_appconfiguration_ruby_sdk"
 ```
 
 ## Usage
@@ -54,16 +54,16 @@ require 'ibm_appconfiguration_ruby_sdk'
 Initialize the SDK to connect with your App Configuration service instance.
 
 ```ruby
-require 'ibm_appconfiguration_ruby_sdk'
+require "ibm_appconfiguration_ruby_sdk"
 
 # Get the singleton instance
 app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
-region = 'us-south'
-guid = '<guid>'
-apikey = '<apikey>'
-collection_id = 'airlines-webapp'
-environment_id = 'dev'
+region = "us-south"
+guid = "<guid>"
+apikey = "<apikey>"
+collection_id = "airlines-webapp"
+environment_id = "dev"
 
 # Enable debug logging (optional)
 app_config_client.set_debug(true)
@@ -83,14 +83,14 @@ After the SDK is initialized successfully, the feature flags & properties can be
 
 ```ruby
 # Get feature
-feature = app_config_client.get_feature('online-check-in')
+feature = app_config_client.get_feature("online-check-in")
 if feature
   result = feature.get_current_value(entity_id, entity_attributes)
   puts result
 end
 
 # Get property
-property = app_config_client.get_property('check-in-charges')
+property = app_config_client.get_property("check-in-charges")
 if property
   result = property.get_current_value(entity_id, entity_attributes)
   puts result
@@ -124,7 +124,7 @@ In order for your application and SDK to continue its operations even during the
 
 ```ruby
 app_config_client.set_context(collection_id, environment_id, {
-  persistent_cache_directory: '/var/lib/docker/volumes/'
+  persistent_cache_directory: "/var/lib/docker/volumes/"
 })
 ```
 
@@ -140,7 +140,7 @@ The SDK is also designed to serve configurations, perform feature flag & propert
 
 ```ruby
 app_config_client.set_context(collection_id, environment_id, {
-  bootstrap_file: 'saflights/flights.json',
+  bootstrap_file: "saflights/flights.json",
   live_config_update_enabled: false
 })
 ```
@@ -153,7 +153,7 @@ This usecase will throw error if given `bootstrap_file` is not found or if unabl
 ## Get single feature
 
 ```ruby
-feature = app_config_client.get_feature('online-check-in') # feature can be nil in case of an invalid feature id
+feature = app_config_client.get_feature("online-check-in") # feature can be nil in case of an invalid feature id
 
 if feature
   puts "Feature Name: #{feature.get_feature_name}"
@@ -171,7 +171,7 @@ end
 
 ```ruby
 features = app_config_client.get_features
-feature = features['online-check-in']
+feature = features["online-check-in"]
 
 if feature
   puts "Feature Name: #{feature.get_feature_name}"
@@ -186,10 +186,10 @@ end
 Use the `feature.get_current_value(entity_id, entity_attributes)` method to evaluate the value of the feature flag. This method returns a Hash containing evaluated value, feature flag enabled status & evaluation details.
 
 ```ruby
-entity_id = 'john_doe'
+entity_id = "john_doe"
 entity_attributes = {
-  city: 'Bangalore',
-  country: 'India'
+  city: "Bangalore",
+  country: "India"
 }
 
 result = feature.get_current_value(entity_id, entity_attributes)
@@ -222,7 +222,7 @@ where
 ## Get single property
 
 ```ruby
-property = app_config_client.get_property('check-in-charges') # property can be nil in case of an invalid property id
+property = app_config_client.get_property("check-in-charges") # property can be nil in case of an invalid property id
 
 if property
   puts "Property Name: #{property.get_property_name}"
@@ -235,7 +235,7 @@ end
 
 ```ruby
 properties = app_config_client.get_properties
-property = properties['check-in-charges']
+property = properties["check-in-charges"]
 
 if property
   puts "Property Name: #{property.get_property_name}"
@@ -249,10 +249,10 @@ end
 Use the `property.get_current_value(entity_id, entity_attributes)` method to evaluate the value of the property. This method returns a Hash containing evaluated value & evaluation details.
 
 ```ruby
-entity_id = 'john_doe'
+entity_id = "john_doe"
 entity_attributes = {
-  city: 'Bangalore',
-  country: 'India'
+  city: "Bangalore",
+  country: "India"
 }
 
 result = property.get_current_value(entity_id, entity_attributes)
@@ -287,10 +287,10 @@ Use the `secret_property_object.get_current_value(entity_id, entity_attributes)`
 Note that the output of this method call is different from `get_current_value` invoked using feature & property objects. This method returns the actual secret value of the evaluated secret reference. The response contains the secret data from the Secrets Manager.
 
 ```ruby
-entity_id = 'john_doe'
+entity_id = "john_doe"
 entity_attributes = {
-  city: 'Bangalore',
-  country: 'India'
+  city: "Bangalore",
+  country: "India"
 }
 
 begin
@@ -306,8 +306,8 @@ end
 <details><summary>Full example:</summary>
 
 ```ruby
-require 'ibm_appconfiguration_ruby_sdk'
-require 'ibm_secrets_manager_sdk'
+require "ibm_appconfiguration_ruby_sdk"
+require "ibm_secrets_manager_sdk"
 
 app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
@@ -320,28 +320,28 @@ end
 
 # Initialize Secrets Manager client
 authenticator = IbmCloudSdkCore::Authenticators::IamAuthenticator.new(
-  apikey: '<SECRETS_MANAGER_APIKEY>'
+  apikey: "<SECRETS_MANAGER_APIKEY>"
 )
 
 secrets_manager_service = IbmCloudSecretsManagerApiV2::SecretsManagerV2.new(
   authenticator: authenticator
 )
-secrets_manager_service.service_url = '<SECRETS_MANAGER_INSTANCE_URL>'
+secrets_manager_service.service_url = "<SECRETS_MANAGER_INSTANCE_URL>"
 
 begin
   secret_property_object = app_config_client.get_secret(property_id, secrets_manager_service)
   response = secret_property_object.get_current_value(entity_id, entity_attributes)
 
   # For Arbitrary secret type
-  puts response.result['payload']
+  puts response.result["payload"]
 
   # For username-password secret type
-  puts response.result['username']
-  puts response.result['password']
+  puts response.result["username"]
+  puts response.result["password"]
 
   # For key-value secret type
-  puts response.result['data']['key1']
-  puts response.result['data']['key2']
+  puts response.result["data"]["key1"]
+  puts response.result["data"]["key2"]
 rescue StandardError => e
   # handle the error
   puts "Error: #{e}"
@@ -356,11 +356,11 @@ Once the SDK is initialized, the app_config_client can be obtained across other 
 ```ruby
 # **other modules**
 
-require 'ibm_appconfiguration_ruby_sdk'
+require "ibm_appconfiguration_ruby_sdk"
 
 app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
-feature = app_config_client.get_feature('online-check-in')
+feature = app_config_client.get_feature("online-check-in")
 enabled = feature.is_enabled?
 result = feature.get_current_value(entity_id, entity_attributes)
 ```
@@ -387,15 +387,15 @@ For property of type secret reference, refer to readme section [evaluate-a-secre
 <details><summary>Feature flag</summary>
 
 ```ruby
-feature = app_config_client.get_feature('json-feature')
+feature = app_config_client.get_feature("json-feature")
 feature.get_feature_data_type # STRING
 feature.get_feature_data_format # JSON
 
 # Example (traversing the returned Hash)
 result = feature.get_current_value(entity_id, entity_attributes)
-puts result[:value]['key'] # prints the value of the key
+puts result[:value]["key"] # prints the value of the key
 
-feature = app_config_client.get_feature('yaml-feature')
+feature = app_config_client.get_feature("yaml-feature")
 feature.get_feature_data_type # STRING
 feature.get_feature_data_format # YAML
 feature.get_current_value(entity_id, entity_attributes)
@@ -405,15 +405,15 @@ feature.get_current_value(entity_id, entity_attributes)
 <details><summary>Property</summary>
 
 ```ruby
-property = app_config_client.get_property('json-property')
+property = app_config_client.get_property("json-property")
 property.get_property_data_type # STRING
 property.get_property_data_format # JSON
 
 # Example (traversing the returned Hash)
 result = property.get_current_value(entity_id, entity_attributes)
-puts result[:value]['key'] # prints the value of the key
+puts result[:value]["key"] # prints the value of the key
 
-property = app_config_client.get_property('yaml-property')
+property = app_config_client.get_property("yaml-property")
 property.get_property_data_type # STRING
 property.get_property_data_format # YAML
 property.get_current_value(entity_id, entity_attributes)
@@ -429,7 +429,7 @@ app_config_client.register_configuration_update_listener do
   # **add your code**
   # To find the effect of any configuration changes, you can call the feature or property related methods
 
-  # feature = app_config_client.get_feature('online-check-in')
+  # feature = app_config_client.get_feature("online-check-in")
   # new_result = feature.get_current_value(entity_id, entity_attributes)
 end
 ```
