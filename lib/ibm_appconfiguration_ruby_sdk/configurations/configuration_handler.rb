@@ -270,48 +270,26 @@ class ConfigurationHandler
     fetch_result = config_fetcher.fetch
 
     if fetch_result[:ok]
-      @logger.info("✅ Successfully fetched configurations from API")
-
-      # Display raw API response
-      # @logger.info("=" * 80)
-      # @logger.info("📡 RAW API RESPONSE:")
-      # @logger.info("-" * 80)
-      require "json"
-      # @logger.info(JSON.pretty_generate(fetch_result[:data]))
-      # @logger.info("=" * 80)
+      @logger.log(Constants::SUCCESSFULLY_FETCHED_THE_CONFIGURATIONS)
 
       # Process and load configurations
       begin
         # Convert string keys to symbol keys
         symbolized_data = symbolize_keys(fetch_result[:data])
 
-        @logger.info("🔍 Symbolized data keys: #{symbolized_data.keys.inspect}")
-        @logger.info("🔍 Environments: #{symbolized_data[:environments]&.length || 0}")
-        @logger.info("🔍 Collections: #{symbolized_data[:collections]&.length || 0}")
-
         # Extract configurations using utils.rb method
-        @logger.info("🔍 About to call extract_configurations")
-        @logger.info("   Environment ID: #{@environment_id}")
-        @logger.info("   Collection ID: #{@collection_id}")
-        @logger.info("   Symbolized data has #{symbolized_data[:environments]&.first&.dig(:features)&.length || 0} features in first environment")
-
         extracted_config = extract_configurations(
           symbolized_data,
           @environment_id,
           @collection_id
         )
 
-        @logger.info("📊 Extracted config - Features: #{extracted_config[:features]&.length || 0}, Properties: #{extracted_config[:properties]&.length || 0}, Segments: #{extracted_config[:segments]&.length || 0}")
-
-        if extracted_config[:features] && extracted_config[:features].empty?
-          @logger.warning("⚠️  WARNING: 0 features extracted but API returned features!")
-          @logger.warning("   This suggests an issue in extract_configurations or validate_resource")
-        end
+        @logger.log("Extracted config - Features: #{extracted_config[:features]&.length || 0}, " \
+                    "Properties: #{extracted_config[:properties]&.length || 0}, " \
+                    "Segments: #{extracted_config[:segments]&.length || 0}")
 
         # Load to cache using existing method
         load_configurations_to_cache(extracted_config)
-
-        @logger.info("📊 Loaded to cache - Features: #{@feature_map.length}, Properties: #{@property_map.length}, Segments: #{@segment_map.length}")
 
         # Write to persistent storage if configured
         if @persistent_cache_directory
@@ -319,9 +297,9 @@ class ConfigurationHandler
           write_to_persistent_storage(formatted_config)
         end
 
-        @logger.info("✅ Configurations loaded successfully")
+        @logger.log("Configurations loaded successfully")
       rescue StandardError => e
-        @logger.error("❌ Failed to process configurations: #{e.message}")
+        @logger.error("Failed to process configurations: #{e.message}")
         @logger.error(e.backtrace.first(3).join("\n"))
       end
     else
@@ -345,13 +323,13 @@ class ConfigurationHandler
         # TODO: emit event
       else
         # No fallback available
-        @logger.error("❌ No configurations available - neither from API nor from cache/bootstrap")
+        @logger.error("No configurations available - neither from API nor from cache/bootstrap")
         report_error(err_msg)
       end
     end
 
     # Start WebSocket client for live updates
-    @logger.info("🔌 Starting WebSocket client for live updates...")
+    @logger.log("Starting WebSocket client for live updates")
     begin
       # Get required parameters from UrlBuilder
       url_builder = UrlBuilder.instance
@@ -369,9 +347,9 @@ class ConfigurationHandler
       )
 
       @websocket_client.connect
-      @logger.info("✅ WebSocket client started successfully")
+      @logger.log("WebSocket client started successfully")
     rescue StandardError => e
-      @logger.error("❌ Failed to start WebSocket client: #{e.message}")
+      @logger.error("Failed to start WebSocket client: #{e.message}")
       @logger.error(e.backtrace.first(3).join("\n"))
     end
   end
@@ -457,56 +435,55 @@ class ConfigurationHandler
   end
 
   ##
-  # Get rollout percentage for progressive rollout
+  # Get rollout percentage for a feature or segment rule evaluation.
+  #
+  # For progressive rollouts, the rollout configuration's +start_at+ value is
+  # appended to the entity id so that the normalized hash used to decide
+  # eligibility is deterministic per rollout configuration (matches the Go SDK).
+  #
   # @param feature [Feature] Feature object
   # @param segment_rule [SegmentRules, nil] Segment rule object (nil for feature-level)
   # @param entity_id [String] Entity ID
-  # @return [Integer] Rollout percentage
-  def get_rollout_percentage(feature, segment_rule, _entity_id)
+  # @return [Array(Integer, String)] Tuple of [rollout percentage, effective entity id]
+  def get_rollout_percentage(feature, segment_rule, entity_id)
+    entity_id = entity_id.to_s
+
     if segment_rule
       # Segment-level rollout
-      if segment_rule.rollout_configuration || (segment_rule.rollout_type && segment_rule.rollout_type == Constants::PROGRESSIVE)
+      if segment_rule.rollout_configuration || segment_rule.rollout_type == Constants::PROGRESSIVE
+        # Progressive rollout: inherit the feature-level configuration when the
+        # segment rule uses the "$default" percentage, otherwise use the
+        # segment-rule specific configuration.
         rollout_hash = if segment_rule.rollout_percentage == Constants::DEFAULT_ROLLOUT_PERCENTAGE
                          @rollout_config_map[feature.feature_id]
                        else
                          @rollout_config_map["#{feature.feature_id}#{Constants::DELIMITER}#{segment_rule.rule_id}"]
                        end
 
-        return 0 unless rollout_hash
+        return [0, entity_id] unless rollout_hash
 
-        segment_rule.rollout_configuration[:start_at]
-        current_time_ms = (Time.now.to_f * 1000).to_i
-        # Find the entry with timestamp <= current time (sorted hash)
-        percentage = 0
-        rollout_hash.each do |timestamp, pct|
-          break if timestamp > current_time_ms
-
-          percentage = pct
-        end
-        percentage
-
+        start_at = segment_rule.rollout_configuration && segment_rule.rollout_configuration[:start_at]
+        entity_id += start_at.to_s if start_at
+        [get_current_rollout_percentage(rollout_hash), entity_id]
       else
         # Manual rollout
-        segment_rule.rollout_percentage == Constants::DEFAULT_ROLLOUT_PERCENTAGE ? feature.rollout_percentage : segment_rule.rollout_percentage
+        percentage = if segment_rule.rollout_percentage == Constants::DEFAULT_ROLLOUT_PERCENTAGE
+                       feature.rollout_percentage
+                     else
+                       segment_rule.rollout_percentage
+                     end
+        [percentage, entity_id]
       end
     else
       # Feature-level rollout
-      return feature.rollout_percentage || 100 unless feature.rollout_configuration
+      return [feature.rollout_percentage || 100, entity_id] unless feature.rollout_configuration
 
       rollout_hash = @rollout_config_map[feature.feature_id]
-      return 0 unless rollout_hash
+      return [0, entity_id] unless rollout_hash
 
-      feature.rollout_configuration[:start_at]
-      current_time_ms = (Time.now.to_f * 1000).to_i
-      # Find the entry with timestamp <= current time (sorted hash)
-      percentage = 0
-      rollout_hash.each do |timestamp, pct|
-        break if timestamp > current_time_ms
-
-        percentage = pct
-      end
-      percentage
-
+      start_at = feature.rollout_configuration[:start_at]
+      entity_id += start_at.to_s if start_at
+      [get_current_rollout_percentage(rollout_hash), entity_id]
     end
   end
 
@@ -549,11 +526,11 @@ class ConfigurationHandler
 
             if feature
               # evaluateRules was called for feature flag
-              segment_level_rollout_percentage = get_rollout_percentage(feature, segment_rule, entity_id)
+              segment_level_rollout_percentage, effective_entity_id = get_rollout_percentage(feature, segment_rule, entity_id)
 
               # Check whether the entityId is eligible for segment rollout
               if segment_level_rollout_percentage == 100 ||
-                 (entity_id && get_normalized_value("#{entity_id}:#{feature.feature_id}") < segment_level_rollout_percentage)
+                 (entity_id && get_normalized_value("#{effective_entity_id}:#{feature.feature_id}") < segment_level_rollout_percentage)
                 # Since the entityId is eligible for segment rollout, return inherited or overridden value
                 result_dict[:value] = if segment_rule.get_value == Constants::DEFAULT_FEATURE_VALUE
                                         feature.enabled_value # Return the inherited value
@@ -595,10 +572,10 @@ class ConfigurationHandler
     if feature
       # evaluateRules was called for feature flag
       # Check whether the entityId is eligible for default rollout
-      rollout_percentage = get_rollout_percentage(feature, nil, entity_id)
+      rollout_percentage, effective_entity_id = get_rollout_percentage(feature, nil, entity_id)
 
       if rollout_percentage == 100 ||
-         (entity_id && get_normalized_value("#{entity_id}:#{feature.feature_id}") < rollout_percentage)
+         (entity_id && get_normalized_value("#{effective_entity_id}:#{feature.feature_id}") < rollout_percentage)
         result_dict[:value] = feature.enabled_value
         result_dict[:is_enabled] = true
         result_dict[:details][:value_type] = "ENABLED_VALUE"
@@ -676,8 +653,8 @@ class ConfigurationHandler
 
       # Step 3: No targeting rules - apply default rollout percentage
       # Check if entity_id qualifies for rollout
-      rollout_percentage = get_rollout_percentage(feature, nil, entity_id)
-      normalized_value = get_normalized_value("#{entity_id}:#{feature.feature_id}")
+      rollout_percentage, effective_entity_id = get_rollout_percentage(feature, nil, entity_id)
+      normalized_value = get_normalized_value("#{effective_entity_id}:#{feature.feature_id}")
 
       if rollout_percentage == 100 ||
          normalized_value < rollout_percentage

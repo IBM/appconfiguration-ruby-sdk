@@ -45,7 +45,7 @@ module Constants
   ENVIRONMENT_ID_VALUE_ERROR = "Provide a valid environmentId in App Configuration setContext method."
   COLLECTION_ID_ERROR = "Invalid action in App Configuration. This action can be performed only after a successful initialization."
   COLLECTION_INIT_ERROR = "Invalid action in App Configuration. This action can be performed only after a successful initialization and setting the context."
-  INVALID_OPTIONS_PARAMTER = "options param passed to setContext is invalid. Should be a Hash"
+  INVALID_OPTIONS_PARAMETER = "options param passed to setContext is invalid. Should be a Hash"
   CONFIGURATION_FILE_NOT_FOUND_ERROR = "bootstrapFile parameter should be provided while liveConfigUpdateEnabled is false during initialization."
   PERSISTENT_CACHE_OPTION_ERROR = "setContext: [options.persistentCacheDirectory]. Invalid value -"
   BOOTSTRAP_FILEPATH_OPTION_ERROR = "setContext: [options.bootstrapFile]. Invalid value -"
@@ -58,7 +58,7 @@ module Constants
   # Default values
   DEFAULT_SEGMENT_ID = "$$null$$"
   DEFAULT_ENTITY_ID = "$$null$$"
-  DEFAULT_USAGE_LIMIT = 10
+  DEFAULT_USAGE_LIMIT = 30
   DEFAULT_ROLLOUT_PERCENTAGE = "$default"
   DEFAULT_FEATURE_VALUE = "$default"
   DEFAULT_PROPERTY_VALUE = "$default"

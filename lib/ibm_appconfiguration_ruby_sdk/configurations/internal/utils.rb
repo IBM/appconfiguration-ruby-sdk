@@ -15,6 +15,8 @@
 # frozen_string_literal: true
 
 require "murmurhash3"
+require "time"
+require_relative "constants"
 
 # Validates feature/property belongs to collection if it contains collections else gives true as default
 # @param resource [Hash] The resource (feature or property)
@@ -63,10 +65,6 @@ def extract_environment_data(data, environment_id)
       properties: environment[:properties] || [],
       segments: data[:segments]
     }
-    puts "🔍 extract_environment_data: Found environment '#{environment_id}'"
-    puts "   Features: #{result[:features].length}"
-    puts "   Properties: #{result[:properties].length}"
-    puts "   Segments: #{result[:segments].length}"
     return result
   end
 
@@ -82,11 +80,6 @@ def extract_resources(resource_data, collection)
   properties = []
   segments = []
   segment_ids = Set.new
-
-  puts "🔍 DEBUG extract_resources:"
-  puts "  Features in resource_data: #{resource_data[:features]&.length || 0}"
-  puts "  Properties in resource_data: #{resource_data[:properties]&.length || 0}"
-  puts "  Collection to match: #{collection}"
 
   # Appending features with validation to features array
   resource_data[:features].each do |feature|
@@ -129,37 +122,17 @@ end
 # @param collection [String] Collection ID
 # @return [Hash] Hash containing features, properties, and segments
 def extract_configurations(configurations, environment, collection)
-  puts "🔍 extract_configurations called"
-  puts "   Environment: #{environment}"
-  puts "   Collection: #{collection}"
-
   # Check if data belongs to correct collection
   raise "Improper/Missing collections in configuration" unless configurations.key?(:collections) && configurations[:collections].is_a?(Array)
 
-  match_found = false
-  configurations[:collections].each do |coll|
-    puts "   Checking collection: #{coll[:collection_id]}"
-    if coll[:collection_id] == collection
-      match_found = true
-      break
-    end
-  end
+  match_found = configurations[:collections].any? { |coll| coll[:collection_id] == collection }
 
   raise "Required collection not found in collections" unless match_found
 
-  puts "   Collection match found!"
-
   # Data in SDK config/export/promote format
   config_data = extract_environment_data(configurations, environment)
-  puts "   After extract_environment_data: features=#{config_data[:features]&.length}"
-
-  result = extract_resources(config_data, collection)
-  puts "   After extract_resources: features=#{result[:features]&.length}"
-
-  result
+  extract_resources(config_data, collection)
 rescue StandardError => e
-  puts "❌ ERROR in extract_configurations: #{e.message}"
-  puts e.backtrace.first(5).join("\n")
   raise "Extraction of configurations failed with error:\n #{e.message}"
 end
 
@@ -237,4 +210,23 @@ def parse_rollout_configuration_phases(configuration)
 
   # Return sorted hash (Ruby hashes maintain insertion order, so we sort by key)
   result.sort.to_h
+end
+
+##
+# Get the current rollout percentage based on the current time.
+# Returns the percentage of the phase whose transition timestamp is the largest
+# value that is still less than or equal to the current time.
+# @param rollout_hash [Hash] Sorted hash mapping timestamp (ms) -> percentage
+# @return [Integer] The current rollout percentage (0 if the map is nil/empty)
+def get_current_rollout_percentage(rollout_hash)
+  return 0 if rollout_hash.nil? || rollout_hash.empty?
+
+  current_time_ms = (Time.now.to_f * 1000).to_i
+  percentage = 0
+  rollout_hash.each do |timestamp, pct|
+    break if timestamp > current_time_ms
+
+    percentage = pct
+  end
+  percentage
 end

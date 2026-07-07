@@ -217,7 +217,7 @@ class Metering
     result.each_value do |data_array|
       data_array.each do |json|
         count = json["usages"].length
-        if count > 25
+        if count > Constants::DEFAULT_USAGE_LIMIT
           send_split_metering(json, count)
         else
           send_to_server(json)
@@ -298,7 +298,7 @@ class Metering
 
   ##
   # Send split metering data for large payloads
-  # Splits payloads with >25 usages into chunks of 10
+  # Splits payloads exceeding DEFAULT_USAGE_LIMIT usages into chunks of DEFAULT_USAGE_LIMIT
   #
   # @param data [Hash] The collection data to split
   # @param count [Integer] Total number of usages

@@ -1,5 +1,37 @@
 AllCops:
   TargetRubyVersion: 3.2
+  NewCops: disable
+  SuggestExtensions: false
+  Exclude:
+    - "vendor/**/*"
+    - "bin/**/*"
+
+# The SDK deliberately exposes a get_*/set_* accessor API and is_*? predicates
+# to stay consistent with the other IBM App Configuration language SDKs
+# (Go, Java, Node). These naming/style cops conflict with that public contract.
+Naming/AccessorMethodName:
+  Enabled: false
+Naming/PredicatePrefix:
+  Enabled: false
+Style/OptionalBooleanParameter:
+  Enabled: false
+Style/Documentation:
+  Enabled: false
+
+# Numeric equality comparisons are intentional in the segment rule operators
+# ("is"/"isNot") where attribute values are compared as floats.
+Lint/FloatComparison:
+  Enabled: false
+
+# The WebSocket connection manager intentionally breaks out of iterators and
+# swallows exceptions while managing the background connection lifecycle.
+Lint/NonLocalExitFromIterator:
+  Exclude:
+    - "lib/ibm_appconfiguration_ruby_sdk/configurations/internal/websocket_client/connection_manager.rb"
+Lint/SuppressedException:
+  Exclude:
+    - "lib/ibm_appconfiguration_ruby_sdk/configurations/internal/websocket_client/connection_manager.rb"
+
 Style/ConditionalAssignment:
   EnforcedStyle: assign_to_condition
   SupportedStyles:
@@ -42,7 +74,7 @@ Layout/LineLength:
   URISchemes:
     - http
     - https
-  IgnoreCopDirectives: false
+  AllowCopDirectives: false
   AllowedPatterns: [ ]
   Enabled: false
 Metrics/MethodLength:
