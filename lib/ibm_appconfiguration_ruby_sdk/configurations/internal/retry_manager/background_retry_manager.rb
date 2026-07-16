@@ -44,16 +44,19 @@ class BackgroundRetryManager
   #
   # @param collection_id [String] Collection ID for API request
   # @param environment_id [String] Environment ID for API request
+  # @param handler [ConfigurationHandler] Handler to push loaded configurations into
   # @param logger [Logger] Optional logger instance (creates new one if not provided)
-  def initialize(collection_id:, environment_id:, logger: nil)
+  def initialize(collection_id:, environment_id:, handler:, logger: nil)
     @collection_id = collection_id
     @environment_id = environment_id
+    @handler = handler
     @logger = logger || Logger.instance
 
     # Initialize ConfigFetcher
     @config_fetcher = ConfigFetcher.new(
       collection_id: collection_id,
       environment_id: environment_id,
+      handler: @handler,
       logger: @logger
     )
 
@@ -84,7 +87,7 @@ class BackgroundRetryManager
 
     @mutex.synchronize do
       if @active
-        @logger.info("⚠️  Background retry already active (attempt ##{@attempt}). Reason: #{reason}")
+        @logger.info("Background retry already active (attempt ##{@attempt}). Reason: #{reason}")
         return false
       end
 
@@ -97,7 +100,7 @@ class BackgroundRetryManager
 
     if should_start
       cap_hours = (@cap_ms / 3_600_000.0).round(2)
-      @logger.info("🔄 Starting background retry (cap #{cap_hours} hours). Reason: #{reason}")
+      @logger.info("Starting background retry (cap #{cap_hours} hours). Reason: #{reason}")
       schedule_next_attempt(reason)
     end
 
@@ -127,7 +130,7 @@ class BackgroundRetryManager
       @retry_thread = nil
     end
 
-    @logger.info("✓ Background retry stopped")
+    @logger.info("Background retry stopped")
   end
 
   # Check if retry is currently active
@@ -164,9 +167,9 @@ class BackgroundRetryManager
     delay_min = (delay_ms / 60_000.0).round(2)
 
     if @attempt.zero?
-      @logger.warning("⏰ #{reason} - Starting first retry attempt immediately")
+      @logger.warning("#{reason} - Starting first retry attempt immediately")
     else
-      @logger.warning("⏰ #{reason} - Retry scheduled in #{delay_min} minutes (attempt ##{@attempt + 1})")
+      @logger.warning("#{reason} - Retry scheduled in #{delay_min} minutes (attempt ##{@attempt + 1})")
     end
 
     # Spawn new thread for this retry attempt
@@ -179,46 +182,43 @@ class BackgroundRetryManager
       # Check if still active after sleep (might have been stopped)
       next unless @active
 
-      @logger.info("🔄 Executing retry attempt ##{@attempt + 1}")
+      @logger.info("Executing retry attempt ##{@attempt + 1}")
 
       # Execute the retry by calling ConfigFetcher
       result = @config_fetcher.fetch
 
       # Decision tree based on result
       if result[:ok]
-        # ✅ SUCCESS: Configuration fetched successfully
-        @logger.info("=" * 80)
-        @logger.info("✅ SUCCESS: Configurations fetched successfully!")
-        @logger.info("=" * 80)
-        @config_fetcher.display_response(result[:data])
+        # Success: configuration fetched successfully
+        @logger.info("Configurations fetched successfully")
         @config_fetcher.process_and_load_configurations(result[:data])
         stop
         next
       end
 
       unless result[:retryable]
-        # ❌ NON-RETRYABLE ERROR: Client error (4xx except 429)
+        # Non-retryable error: client error (4xx except 429)
         # Stop retrying - user needs to fix the issue
-        @logger.error("❌ Non-retryable error (#{result[:status]}) - stopping retry")
+        @logger.error("Non-retryable error (#{result[:status]}) - stopping retry")
         stop
         next
       end
 
-      # 🔄 RETRYABLE ERROR: 429 or 5xx
+      # Retryable error: 429 or 5xx
       # Increment attempt counter and schedule next retry
       @mutex.synchronize do
         @attempt += 1
       end
 
       next_reason = "Failed to fetch configurations. Status: #{result[:status]}"
-      @logger.warning("⚠️  Retry attempt ##{@attempt} failed - scheduling next attempt")
+      @logger.warning("Retry attempt ##{@attempt} failed - scheduling next attempt")
 
       # Recursive call to schedule next attempt with increased delay
       schedule_next_attempt(next_reason)
     rescue StandardError => e
       # Handle any unexpected errors in the retry thread
-      @logger.error("❌ Error in retry thread: #{e.message}")
-      @logger.error(e.backtrace.join("\n"))
+      @logger.error("Error in retry thread: #{e.class.name} - #{e.message}")
+      @logger.error(e.backtrace.join("\n")) if e.backtrace
 
       # Try to schedule next attempt if still active
       if @active

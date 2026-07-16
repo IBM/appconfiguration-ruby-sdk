@@ -15,9 +15,11 @@
 # frozen_string_literal: true
 
 require "ibm_cloud_sdk_core"
+require "json"
 require "uri"
 require_relative "url_builder"
 require_relative "../configurations/internal/constants"
+require_relative "../configurations/internal/logger"
 require_relative "../version"
 
 ##
@@ -46,6 +48,7 @@ class ApiManager
   @iam_authenticator = nil
   @base_service_client = nil
   @url_builder = nil
+  @logger = Logger.instance
 
   class << self
     ##
@@ -101,9 +104,9 @@ class ApiManager
 
       if iam_url && iam_url != default_prod_url
         authenticator_options[:url] = iam_url
-        puts "🔧 Using custom IAM URL: #{iam_url}"
+        @logger.log("Using custom IAM URL: #{iam_url}")
       else
-        puts "🔧 Using default IAM URL: #{default_prod_url}"
+        @logger.log("Using default IAM URL: #{default_prod_url}")
       end
 
       @iam_authenticator = IBMCloudSdkCore::IamAuthenticator.new(authenticator_options)
@@ -169,32 +172,25 @@ class ApiManager
     def token
       raise "Authenticator not set. Call set_authenticator first." if @iam_authenticator.nil?
 
-      begin
-        # Create an empty request hash - the SDK will populate it
-        request = {}
+      # Create an empty request hash - the SDK will populate it
+      request = {}
 
-        # Force token refresh by setting force_refresh option
-        # This ensures we get a fresh token, especially important for reconnections
-        # The IBM Cloud SDK Core will check token expiration and refresh if needed
-        @iam_authenticator.authenticate(request)
+      # Force token refresh by setting force_refresh option
+      # This ensures we get a fresh token, especially important for reconnections
+      # The IBM Cloud SDK Core will check token expiration and refresh if needed
+      @iam_authenticator.authenticate(request)
 
-        # The Ruby SDK puts the Authorization header directly in the request hash
-        # Try both string and symbol keys for compatibility
-        authorization = request["Authorization"] || request[:Authorization]
+      # The Ruby SDK puts the Authorization header directly in the request hash
+      # Try both string and symbol keys for compatibility
+      authorization = request["Authorization"] || request[:Authorization]
 
-        raise StandardError.new("Authentication succeeded but no Authorization header was set. Request: #{request.inspect}") if authorization.nil?
+      raise "Authentication succeeded but no Authorization header was set. Request: #{request.inspect}" if authorization.nil?
 
-        # Log token info for debugging (first 20 chars only for security)
-        token_preview = authorization[0..19] if authorization
-        puts "🔑 Token obtained: #{token_preview}..."
+      # Log token info for debugging (first 20 chars only for security)
+      token_preview = authorization[0..19] if authorization
+      @logger.log("Token obtained: #{token_preview}...")
 
-        authorization
-      rescue StandardError => e
-        error_msg = "Failed to get authentication token for websocket connect. Error: #{e.message}"
-        puts "❌ Token error details: #{e.class.name} - #{e.message}"
-        puts "   Backtrace: #{e.backtrace.first(3).join("\n   ")}" if e.backtrace
-        raise StandardError.new(error_msg)
-      end
+      authorization
     end
 
     ##
@@ -217,8 +213,6 @@ class ApiManager
     #   response = ApiManager.post_metering(url, data, apikey)
     #
     def post_metering(url, metering_data, _apikey)
-      require "json"
-
       # Extract the path from the full URL
       uri = URI.parse(url)
       path = uri.path
@@ -240,12 +234,6 @@ class ApiManager
     # Get the IAM Authenticator instance
     #
     # @return [IBMCloudSdkCore::IamAuthenticator, nil] The IAM authenticator or nil if not set
-    #
-    # @example
-    #   authenticator = ApiManager.iam_authenticator
-    #   if authenticator
-    #     puts "Authenticator is configured"
-    #   end
     #
     attr_reader :iam_authenticator
 

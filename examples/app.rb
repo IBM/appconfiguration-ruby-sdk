@@ -36,7 +36,7 @@ end
 def main
   puts "Initializing App Configuration SDK..."
   client = initialize_app_config
-  puts "✅ SDK initialized successfully"
+  puts "SDK initialized successfully"
   puts ""
 
   disabled_evals = 0
@@ -55,7 +55,7 @@ def main
     feature = client.get_feature("demoflg")
 
     if feature.nil?
-      puts "\n❌ Feature 'demoflg' not found"
+      puts "\nFeature 'demoflg' not found"
       sleep 1
       next
     end
@@ -96,7 +96,7 @@ end
 
 # Handle Ctrl+C gracefully
 trap("INT") do
-  puts "\n\n🛑 Shutting down..."
+  puts "\n\n Shutting down..."
   exit(0)
 end
 

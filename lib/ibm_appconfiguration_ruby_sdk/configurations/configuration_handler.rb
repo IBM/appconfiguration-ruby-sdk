@@ -50,6 +50,7 @@ class ConfigurationHandler
     @secret_map = {}
     @rollout_config_map = {}
     @all_feature_flags = []
+    @cache_mutex = Mutex.new
 
     @logger = Logger.instance
     @file_manager = FileManager.instance
@@ -99,52 +100,55 @@ class ConfigurationHandler
   def load_configurations_to_cache(data)
     return unless data
 
-    if data[:features]
-      features = data[:features]
-      @all_feature_flags = features
-      @feature_map = {}
-      @rollout_config_map = {}
+    @cache_mutex.synchronize do
+      if data[:features]
+        features = data[:features]
+        @all_feature_flags = features
+        @feature_map = {}
+        @rollout_config_map = {}
 
-      features.each do |feature|
-        feature_obj = Feature.new(feature)
-        @feature_map[feature[:feature_id]] = feature_obj
+        features.each do |feature|
+          feature_obj = Feature.new(feature)
+          @feature_map[feature[:feature_id]] = feature_obj
 
-        # Parse feature-level progressive rollout
-        if feature_obj.rollout_configuration
-          @rollout_config_map[feature[:feature_id]] =
-            parse_rollout_configuration_phases(feature_obj.rollout_configuration)
-        end
+          # Parse feature-level progressive rollout
+          if feature_obj.rollout_configuration
+            @rollout_config_map[feature[:feature_id]] =
+              parse_rollout_configuration_phases(feature_obj.rollout_configuration)
+          end
 
-        # Parse segment-level progressive rollout
-        next unless feature[:segment_rules].is_a?(Array)
+          # Parse segment-level progressive rollout
+          next unless feature[:segment_rules].is_a?(Array)
 
-        feature[:segment_rules].each do |segment_rule|
-          segment_rule_obj = SegmentRules.new(segment_rule)
-          if segment_rule_obj.rollout_configuration
-            key = "#{feature[:feature_id]}#{Constants::DELIMITER}#{segment_rule[:rule_id]}"
-            @rollout_config_map[key] = parse_rollout_configuration_phases(segment_rule_obj.rollout_configuration)
+          feature[:segment_rules].each do |segment_rule|
+            segment_rule_obj = SegmentRules.new(segment_rule)
+            if segment_rule_obj.rollout_configuration
+              key = "#{feature[:feature_id]}#{Constants::DELIMITER}#{segment_rule[:rule_id]}"
+              @rollout_config_map[key] = parse_rollout_configuration_phases(segment_rule_obj.rollout_configuration)
+            end
           end
         end
       end
-    end
 
-    if data[:properties]
-      properties = data[:properties]
-      @property_map = {}
-      properties.each do |property|
-        @property_map[property[:property_id]] = Property.new(property)
+      if data[:properties]
+        properties = data[:properties]
+        @property_map = {}
+        properties.each do |property|
+          @property_map[property[:property_id]] = Property.new(property)
+        end
+      end
+
+      if data[:segments]
+        segments = data[:segments]
+        @segment_map = {}
+        segments.each do |segment|
+          @segment_map[segment[:segment_id]] = Segment.new(segment)
+        end
       end
     end
 
-    if data[:segments]
-      segments = data[:segments]
-      @segment_map = {}
-      segments.each do |segment|
-        @segment_map[segment[:segment_id]] = Segment.new(segment)
-      end
-    end
-
-    # Notify listener after configurations are loaded
+    # Notify listener after configurations are loaded (outside mutex to prevent
+    # deadlock if the listener calls get_feature / get_property etc.)
     notify_configuration_update_listener
   end
 
@@ -263,6 +267,7 @@ class ConfigurationHandler
     config_fetcher = ConfigFetcher.new(
       collection_id: @collection_id,
       environment_id: @environment_id,
+      handler: self,
       logger: @logger
     )
 
@@ -299,8 +304,8 @@ class ConfigurationHandler
 
         @logger.log("Configurations loaded successfully")
       rescue StandardError => e
-        @logger.error("Failed to process configurations: #{e.message}")
-        @logger.error(e.backtrace.first(3).join("\n"))
+        @logger.error("Failed to process configurations: #{e.class.name} - #{e.message}")
+        @logger.error(e.backtrace.join("\n")) if e.backtrace
       end
     else
       # Failed to fetch from API
@@ -349,8 +354,8 @@ class ConfigurationHandler
       @websocket_client.connect
       @logger.log("WebSocket client started successfully")
     rescue StandardError => e
-      @logger.error("Failed to start WebSocket client: #{e.message}")
-      @logger.error(e.backtrace.first(3).join("\n"))
+      @logger.error("Failed to start WebSocket client: #{e.class.name} - #{e.message}")
+      @logger.error(e.backtrace.join("\n")) if e.backtrace
     end
   end
 
@@ -363,8 +368,9 @@ class ConfigurationHandler
   # @param feature_id [String] Feature ID
   # @return [Feature, nil] Feature object or nil
   def get_feature(feature_id)
-    return @feature_map[feature_id] if @feature_map.key?(feature_id)
-
+    @cache_mutex.synchronize do
+      return @feature_map[feature_id] if @feature_map.key?(feature_id)
+    end
     @logger.error("Invalid feature id - #{feature_id}")
     nil
   end
@@ -374,8 +380,9 @@ class ConfigurationHandler
   # @param property_id [String] Property ID
   # @return [Property, nil] Property object or nil
   def get_property(property_id)
-    return @property_map[property_id] if @property_map.key?(property_id)
-
+    @cache_mutex.synchronize do
+      return @property_map[property_id] if @property_map.key?(property_id)
+    end
     @logger.error("Invalid property id - #{property_id}")
     nil
   end
@@ -403,8 +410,9 @@ class ConfigurationHandler
   # @param segment_id [String] Segment ID
   # @return [Segment, nil] Segment object or nil
   def get_segment(segment_id)
-    return @segment_map[segment_id] if @segment_map.key?(segment_id)
-
+    @cache_mutex.synchronize do
+      return @segment_map[segment_id] if @segment_map.key?(segment_id)
+    end
     @logger.error("Invalid segment id - #{segment_id}")
     nil
   end
@@ -415,10 +423,9 @@ class ConfigurationHandler
   # @param entity_attributes [Hash] Entity attributes
   # @return [Boolean] Evaluation result
   def evaluate_segment(segment_key, entity_attributes)
-    if @segment_map.key?(segment_key)
-      segment_obj = @segment_map[segment_key]
-      return segment_obj.evaluate_rule(entity_attributes)
-    end
+    segment_obj = @cache_mutex.synchronize { @segment_map[segment_key] }
+    return segment_obj.evaluate_rule(entity_attributes) if segment_obj
+
     nil
   end
 
@@ -454,11 +461,13 @@ class ConfigurationHandler
         # Progressive rollout: inherit the feature-level configuration when the
         # segment rule uses the "$default" percentage, otherwise use the
         # segment-rule specific configuration.
-        rollout_hash = if segment_rule.rollout_percentage == Constants::DEFAULT_ROLLOUT_PERCENTAGE
-                         @rollout_config_map[feature.feature_id]
-                       else
-                         @rollout_config_map["#{feature.feature_id}#{Constants::DELIMITER}#{segment_rule.rule_id}"]
-                       end
+        rollout_hash = @cache_mutex.synchronize do
+          if segment_rule.rollout_percentage == Constants::DEFAULT_ROLLOUT_PERCENTAGE
+            @rollout_config_map[feature.feature_id]
+          else
+            @rollout_config_map["#{feature.feature_id}#{Constants::DELIMITER}#{segment_rule.rule_id}"]
+          end
+        end
 
         return [0, entity_id] unless rollout_hash
 
@@ -478,7 +487,7 @@ class ConfigurationHandler
       # Feature-level rollout
       return [feature.rollout_percentage || 100, entity_id] unless feature.rollout_configuration
 
-      rollout_hash = @rollout_config_map[feature.feature_id]
+      rollout_hash = @cache_mutex.synchronize { @rollout_config_map[feature.feature_id] }
       return [0, entity_id] unless rollout_hash
 
       start_at = feature.rollout_configuration[:start_at]
@@ -520,7 +529,8 @@ class ConfigurationHandler
             # Check whether the entityAttributes satisfies all the rules of that segment
             next unless evaluate_segment(segment_key, entity_attributes)
 
-            segment_name = @segment_map[segment_key].name
+            segment_obj = get_segment(segment_key)
+            segment_name = segment_obj&.name
             result_dict[:evaluated_segment_id] = segment_key
             result_dict[:details][:segment_name] = segment_name
 
@@ -722,14 +732,14 @@ class ConfigurationHandler
   # Get features
   # @return [Hash] Hash of features
   def get_features
-    @feature_map
+    @cache_mutex.synchronize { @feature_map.dup }
   end
 
   ##
   # Get properties
   # @return [Hash] Hash of properties
   def get_properties
-    @property_map
+    @cache_mutex.synchronize { @property_map.dup }
   end
 
   ##
@@ -766,10 +776,6 @@ class ConfigurationHandler
   # Only one listener can be registered at a time (matches Java SDK behavior).
   # Calling this method multiple times will replace the previous listener.
   # @param block [Proc] Callback block to be invoked on configuration updates
-  # @example
-  #   handler.register_configuration_update_listener do
-  #     puts "Configurations updated!"
-  #   end
   def register_configuration_update_listener(&block)
     if block_given?
       @configuration_update_listener = block
@@ -791,8 +797,8 @@ class ConfigurationHandler
       @logger.log("Notifying configuration update listener")
       @configuration_update_listener.call
     rescue StandardError => e
-      @logger.error("Error in configuration update listener: #{e.message}")
-      @logger.error(e.backtrace.first(3).join("\n"))
+      @logger.error("Error in configuration update listener: #{e.class.name} - #{e.message}")
+      @logger.error(e.backtrace.join("\n")) if e.backtrace
     end
   end
 

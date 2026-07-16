@@ -261,13 +261,6 @@ module IbmAppconfigurationRubySdk
     # The listener will be invoked whenever configurations are updated (initial load or live updates).
     # Only one listener can be registered at a time - calling this method multiple times will replace the previous listener.
     # @param block [Proc] Callback block to be invoked on configuration updates
-    # @example
-    #   app_config = IbmAppconfigurationRubySdk::AppConfiguration.instance
-    #   app_config.register_configuration_update_listener do
-    #     puts "Configurations updated!"
-    #     feature = app_config.get_feature('my-feature')
-    #     # React to configuration changes
-    #   end
     # @return [void]
     def register_configuration_update_listener(&block)
       if @is_initialized && @is_initialized_config

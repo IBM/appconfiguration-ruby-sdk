@@ -55,11 +55,7 @@ class FileManager
 
     raise "given bootstrap file is empty: #{file_path}" if data.empty?
 
-    begin
-      data
-    rescue StandardError => e
-      raise "failed to parse the json from the given bootstrap file: #{file_path}. Error #{e}"
-    end
+    data
   end
 
   def delete_file_data(file_path)

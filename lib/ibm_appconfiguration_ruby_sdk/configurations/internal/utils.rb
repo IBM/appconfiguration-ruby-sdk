@@ -132,8 +132,6 @@ def extract_configurations(configurations, environment, collection)
   # Data in SDK config/export/promote format
   config_data = extract_environment_data(configurations, environment)
   extract_resources(config_data, collection)
-rescue StandardError => e
-  raise "Extraction of configurations failed with error:\n #{e.message}"
 end
 
 # Helper method to convert string keys to symbol keys recursively

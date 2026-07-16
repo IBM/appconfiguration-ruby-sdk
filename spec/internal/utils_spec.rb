@@ -145,12 +145,12 @@ RSpec.describe "configuration utils" do
 
     it "raises when the collection is not found" do
       expect { extract_configurations(configurations, "dev", "unknown") }
-        .to raise_error(/Extraction of configurations failed/)
+        .to raise_error(/Required collection not found in collections/)
     end
 
     it "raises when the environment is not found" do
       expect { extract_configurations(configurations, "prod", "c1") }
-        .to raise_error(/Extraction of configurations failed/)
+        .to raise_error(/Matching environment not found in configuration/)
     end
   end
 end

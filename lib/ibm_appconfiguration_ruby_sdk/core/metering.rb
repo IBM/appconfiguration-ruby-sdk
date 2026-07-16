@@ -338,7 +338,8 @@ class Metering
       # Success - no logging needed for normal operation
       @logger.warning("Metering response status: #{response.status}") if response.status != Constants::STATUS_CODE_ACCEPTED
     rescue StandardError => e
-      @logger.error("Exception occurred while sending metering data: #{e.message}")
+      @logger.error("Exception occurred while sending metering data: #{e.class.name} - #{e.message}")
+      @logger.error(e.backtrace.join("\n")) if e.backtrace
 
       # Extract status code from the error
       status = nil
@@ -376,7 +377,8 @@ class Metering
         begin
           send_metering
         rescue StandardError => e
-          @logger.error("Error in metering thread: #{e.message}")
+          @logger.error("Error in metering thread: #{e.class.name} - #{e.message}")
+          @logger.error(e.backtrace.join("\n")) if e.backtrace
         end
       end
     end

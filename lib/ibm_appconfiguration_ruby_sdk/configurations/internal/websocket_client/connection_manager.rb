@@ -30,6 +30,7 @@ require_relative "../retry_manager/config_fetcher"
 require_relative "../retry_manager/background_retry_manager"
 require_relative "../../configuration_handler"
 require_relative "../utils"
+require_relative "../logger"
 require_relative "../../../version"
 
 class ConnectionManager
@@ -64,6 +65,8 @@ class ConnectionManager
     @config_fetcher = nil
     @background_retry_manager = nil
 
+    @logger = Logger.instance
+
     # Setup SDK components
     setup_sdk
   end
@@ -75,20 +78,19 @@ class ConnectionManager
 
     # Get authentication token
     begin
-      puts "⏳ Requesting IAM token..."
+      @logger.log("Requesting IAM token...")
       bearer_token = ApiManager.token
 
       if bearer_token.nil? || bearer_token.empty?
-        puts "❌ Failed to get authentication token"
+        @logger.error("Failed to get authentication token")
         transition_state(State::RECONNECTING)
         schedule_reconnect
         return
       end
 
-      puts "✓ Got authentication token"
+      @logger.log("Got authentication token")
     rescue StandardError => e
-      puts "❌ Exception getting authentication token: #{e.message}"
-      puts "   Error details: #{e.class.name}"
+      @logger.error("Exception getting authentication token: #{e.class.name} - #{e.message}")
       transition_state(State::RECONNECTING)
       schedule_reconnect
       return
@@ -98,7 +100,7 @@ class ConnectionManager
     url = @url_builder.websocket_url
 
     if url.nil? || url.empty?
-      puts "❌ Failed to get WebSocket URL"
+      @logger.error("Failed to get WebSocket URL")
       transition_state(State::RECONNECTING)
       schedule_reconnect
       return
@@ -109,7 +111,7 @@ class ConnectionManager
     host = uri.host
     port = uri.port || 443 # Default to 443 for wss://
 
-    puts "Connecting to #{host}:#{port}"
+    @logger.log("Connecting to #{host}:#{port}")
 
     # Create TCP socket
     tcp_socket = TCPSocket.new(host, port)
@@ -133,7 +135,7 @@ class ConnectionManager
     # Set authentication headers
     @driver.set_header("Authorization", bearer_token)
     @driver.set_header("User-Agent", "appconfiguration-ruby-sdk/#{IbmAppconfigurationRubySdk::VERSION}")
-    puts "✓ Headers set with authentication"
+    @logger.log("Headers set with authentication")
 
     register_callbacks
 
@@ -143,14 +145,15 @@ class ConnectionManager
 
     # Start background retry if flag is set (fallback configurations were loaded)
     if @start_background_retry
-      puts "🔄 Starting background retry (initial API fetch failed, using fallback config)"
+      @logger.info("Starting background retry (initial API fetch failed, using fallback config)")
       @background_retry_manager.start(
         reason: "Initial API fetch failed - using fallback configuration"
       )
     end
     @start_background_retry = true
   rescue StandardError => e
-    puts "Connection failed: #{e.message}"
+    @logger.error("Connection failed: #{e.class.name} - #{e.message}")
+    @logger.error(e.backtrace.join("\n")) if e.backtrace
 
     transition_state(
       State::RECONNECTING
@@ -179,7 +182,7 @@ class ConnectionManager
 
   def register_callbacks
     @driver.on(:open) do |event|
-      puts "WebSocket connected"
+      @logger.info("WebSocket connected")
 
       # Check for HTTP status code during WebSocket handshake
       # The event object may contain status_code for HTTP errors
@@ -188,8 +191,7 @@ class ConnectionManager
 
         # Check for client-side errors (4xx except 429 Too Many Requests)
         if status_code >= 400 && status_code < 500 && status_code != 429
-          puts "❌ WebSocket handshake failed with client error: #{status_code}"
-          puts "⛔ Client-side error detected - will not retry connection"
+          @logger.error("WebSocket handshake failed with client error: #{status_code} - will not retry")
           @should_reconnect = false
           cleanup_connection
           transition_state(State::CLOSED)
@@ -211,42 +213,37 @@ class ConnectionManager
     end
 
     @driver.on(:message) do |event|
-      puts "Received: #{event.data}"
+      @logger.log("Received: #{event.data}")
 
       if event.data == "test message"
         # Heartbeat message
         @last_heartbeat_at = Time.now
-        puts "Heartbeat updated"
+        @logger.log("Heartbeat updated")
       else
         # Configuration update message
-        puts "📦 Configuration update received"
+        @logger.info("Configuration update received")
 
         # Stop any active background retry and restart from t=0
         if @background_retry_manager.active?
-          puts "🛑 Stopping active background retry to restart from t=0"
+          @logger.log("Stopping active background retry to restart from t=0")
           @background_retry_manager.stop
         end
 
         # Start background retry manager which will fetch immediately at t=0
-        puts "🔄 Starting background retry for configuration update..."
         @background_retry_manager.start(
           reason: "Configuration update notification received"
         )
-        puts "✓ Background retry started (will fetch immediately at t=0)"
+        @logger.log("Background retry started")
       end
     end
 
     @driver.on(:close) do |event|
-      puts "Connection closed"
-
-      puts "Code: #{event.code}"
-      puts "Reason: #{event.reason}"
+      @logger.info("Connection closed (code: #{event.code}, reason: #{event.reason})")
 
       # Check for WebSocket close codes that map to HTTP 4xx client errors
       # Close codes 4000-4499 (except 4429) indicate client-side errors
       if event.code && event.code >= 4000 && event.code < 4500 && event.code != 4429
-        puts "❌ WebSocket closed with client error code: #{event.code}"
-        puts "⛔ Client-side error detected - will not retry connection"
+        @logger.error("WebSocket closed with client error code: #{event.code} - will not retry")
         @should_reconnect = false
         cleanup_connection
         transition_state(State::CLOSED)
@@ -258,9 +255,7 @@ class ConnectionManager
     end
 
     @driver.on(:error) do |event|
-      puts "WebSocket error"
-
-      p event
+      @logger.error("WebSocket error: #{event}")
 
       # Check if error contains a status code indicating client-side error
       if event.respond_to?(:status_code) && event.status_code
@@ -268,8 +263,7 @@ class ConnectionManager
 
         # Check for client-side errors (4xx except 429 Too Many Requests)
         if status_code >= 400 && status_code < 500 && status_code != 429
-          puts "❌ WebSocket error with client error status: #{status_code}"
-          puts "⛔ Client-side error detected - will not retry connection"
+          @logger.error("WebSocket error with client error status: #{status_code} - will not retry")
           @should_reconnect = false
           cleanup_connection
           transition_state(State::CLOSED)
@@ -295,7 +289,7 @@ class ConnectionManager
       rescue EOFError
         unless @shutting_down
 
-          puts "Server disconnected"
+          @logger.warning("Server disconnected")
 
           handle_disconnect("EOF")
 
@@ -303,11 +297,11 @@ class ConnectionManager
       rescue IOError => e
         if e.message.include?("stream closed")
 
-          puts "Reader thread stopped"
+          @logger.log("Reader thread stopped")
 
         else
 
-          puts "Reader IO error: #{e.message}"
+          @logger.error("Reader IO error: #{e.message}")
 
           handle_disconnect(
             "Reader IO failure"
@@ -317,7 +311,8 @@ class ConnectionManager
       rescue StandardError => e
         unless @shutting_down
 
-          puts "Reader error: #{e.message}"
+          @logger.error("Reader error: #{e.class.name} - #{e.message}")
+          @logger.error(e.backtrace.join("\n")) if e.backtrace
 
           handle_disconnect(
             "Reader failure"
@@ -352,7 +347,7 @@ class ConnectionManager
 
         if !internet
 
-          puts "⚠️ No Internet Connection"
+          @logger.warning("No internet connection")
 
           is_connected = false
 
@@ -360,10 +355,10 @@ class ConnectionManager
 
           unless is_connected
 
-            puts "✓ Internet connection restored"
+            @logger.info("Internet connection restored")
 
             # Connection will be handled by reconnect logic
-            handle_disconnect("Lost iinternet")
+            handle_disconnect("Lost internet")
 
           end
 
@@ -372,7 +367,8 @@ class ConnectionManager
         end
       end
     rescue StandardError => e
-      puts "Connectivity thread error: #{e.message}"
+      @logger.error("Connectivity thread error: #{e.class.name} - #{e.message}")
+      @logger.error(e.backtrace.join("\n")) if e.backtrace
     end
   end
 
@@ -386,7 +382,7 @@ class ConnectionManager
         State::CLOSED
       ].include?(@state)
 
-      puts "Handling disconnect: #{reason}"
+      @logger.info("Handling disconnect: #{reason}")
 
       transition_state(
         State::RECONNECTING
@@ -448,7 +444,7 @@ class ConnectionManager
         @reconnect_attempts
       )
 
-    puts "Reconnect in #{delay.round(2)} sec"
+    @logger.info("Reconnect in #{delay.round(2)} sec")
 
     @reconnect_attempts += 1
 
@@ -464,7 +460,7 @@ class ConnectionManager
   # --------------------------------------------------
 
   def transition_state(new_state)
-    puts "#{@state} -> #{new_state}"
+    @logger.log("#{@state} -> #{new_state}")
 
     @state = new_state
   end
@@ -489,13 +485,15 @@ class ConnectionManager
     # Initialize ConfigFetcher
     @config_fetcher = ConfigFetcher.new(
       collection_id: @collection_id,
-      environment_id: @environment_id
+      environment_id: @environment_id,
+      handler: ConfigurationHandler.instance
     )
 
     # Initialize BackgroundRetryManager
     @background_retry_manager = BackgroundRetryManager.new(
       collection_id: @collection_id,
-      environment_id: @environment_id
+      environment_id: @environment_id,
+      handler: ConfigurationHandler.instance
     )
   end
 end

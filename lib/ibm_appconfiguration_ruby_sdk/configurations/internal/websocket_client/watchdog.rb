@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require_relative "../logger"
+
 class Watchdog
   WATCHDOG_CONFIG = {
     check_interval: 60,
@@ -22,6 +24,7 @@ class Watchdog
 
   def initialize(client)
     @client = client
+    @logger = Logger.instance
   end
 
   def start
@@ -37,7 +40,7 @@ class Watchdog
         next unless heartbeat_age >
                     WATCHDOG_CONFIG[:heartbeat_timeout]
 
-        puts "Heartbeat timeout detected"
+        @logger.warning("Heartbeat timeout detected")
 
         @client.handle_disconnect(
           "Heartbeat timeout"
