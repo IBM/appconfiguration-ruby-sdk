@@ -14,6 +14,8 @@
 
 # frozen_string_literal: true
 
+require_relative "./ibm_appconfiguration_ruby_sdk/errors"
+require_relative "./ibm_appconfiguration_ruby_sdk/configuration"
 require_relative "./ibm_appconfiguration_ruby_sdk/app_configuration"
 
 module IbmAppconfigurationRubySdk

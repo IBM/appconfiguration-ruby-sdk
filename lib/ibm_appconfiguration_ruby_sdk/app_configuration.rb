@@ -15,10 +15,10 @@
 # frozen_string_literal: true
 
 require "singleton"
-require_relative "configurations/configuration_handler"
-require_relative "configurations/internal/logger"
-require_relative "configurations/internal/constants"
-require_relative "core/url_builder"
+require_relative "configuration_handler"
+require_relative "logger"
+require_relative "constants"
+require_relative "url_builder"
 
 module IbmAppconfigurationRubySdk
   # AppConfiguration client class implementing singleton pattern
@@ -57,12 +57,42 @@ module IbmAppconfigurationRubySdk
         url_builder = UrlBuilder.instance
         url_builder.set_base_service_url(url)
       end
+
+      ##
+      # Override the WebSocket URL independently of the HTTP service URL.
+      # Use when the WebSocket server runs on a different port (e.g. local dev).
+      # Must be called before set_context.
+      # @param url [String] Full WebSocket URL (ws:// or wss://)
+      def override_websocket_url(url)
+        return unless url
+
+        UrlBuilder.instance.set_override_websocket_url(url)
+      end
+
+      ##
+      # Block-based configuration — call before .instance to set SDK-wide options.
+      # @yieldparam config [IbmAppconfigurationRubySdk::Configuration]
+      # @example
+      #   IbmAppconfigurationRubySdk::AppConfiguration.configure do |config|
+      #     config.use_private_endpoint = true
+      #     config.debug = true
+      #   end
+      def configure
+        yield(configuration) if block_given?
+      end
+
+      ##
+      # Returns (or lazily creates) the shared Configuration object.
+      # @return [IbmAppconfigurationRubySdk::Configuration]
+      def configuration
+        @configuration ||= IbmAppconfigurationRubySdk::Configuration.new
+      end
     end
 
     def initialize
-      @is_initialized = false
-      @is_initialized_config = false
-      @use_private_endpoint = false
+      @initialized = false
+      @context_initialized = false
+      @use_private_endpoint = self.class.configuration.use_private_endpoint
       @configuration_handler = nil
       @logger = Logger.instance
       @url_builder = UrlBuilder.instance
@@ -73,42 +103,36 @@ module IbmAppconfigurationRubySdk
     # @param region [String] Region name where the App Configuration service instance is created
     # @param guid [String] GUID of the App Configuration service
     # @param apikey [String] API key of the App Configuration service
-    # @raise [RuntimeError] If any required parameter is missing or invalid
-    def init(region, guid, apikey)
+    # @raise [ConfigurationError] If any required parameter is missing or invalid
+    def init(region:, guid:, apikey:)
       # init is a SDK initialization method. It is expected to be called only once.
       # This condition ensures the init inputs are taken only once even if called multiple times.
-      return if @is_initialized
+      return if @initialized
 
-      unless region && guid && apikey
-        if !region
-          report_error(Constants::REGION_ERROR)
-        elsif !guid
-          report_error(Constants::GUID_ERROR)
-        else
-          report_error(Constants::APIKEY_ERROR)
-        end
-      end
+      report_error(Constants::REGION_ERROR)  unless region
+      report_error(Constants::GUID_ERROR)    unless guid
+      report_error(Constants::APIKEY_ERROR)  unless apikey
 
       @configuration_handler = ConfigurationHandler.instance
-      @configuration_handler.init(region, guid, apikey, @use_private_endpoint)
-      @is_initialized = true
+      @configuration_handler.init(region: region, guid: guid, apikey: apikey,
+                                   use_private_endpoint: @use_private_endpoint)
+      @initialized = true
     end
 
     ##
     # Set the context of the SDK
     # @param collection_id [String] ID of the collection created in App Configuration service instance
     # @param environment_id [String] ID of the environment created in App Configuration service instance
-    # @param options [Hash] Optional configuration parameters
-    # @option options [String] :persistent_cache_directory Directory path for persistent cache
-    # @option options [String] :bootstrap_file Absolute path of configuration file
-    # @option options [Boolean] :live_config_update_enabled Enable live configuration updates (default: true)
-    # @raise [RuntimeError] If init was not called or parameters are invalid
-    def set_context(collection_id, environment_id, options = {})
+    # @param persistent_cache_directory [String, nil] Directory path for persistent cache
+    # @param bootstrap_file [String, nil] Absolute path of configuration file
+    # @param live_config_update_enabled [Boolean] Enable live configuration updates (default: true)
+    # @raise [ConfigurationError] If init was not called or parameters are invalid
+    def set_context(collection_id, environment_id, **options)
       # setContext is also a SDK initialization method. It is expected to be called only once.
       # This condition ensures the setContext inputs are taken only once even if called multiple times.
-      return if @is_initialized_config
+      return if @context_initialized
 
-      report_error(Constants::COLLECTION_ID_ERROR) unless @is_initialized
+      report_error(Constants::COLLECTION_ID_ERROR) unless @initialized
 
       report_error(Constants::COLLECTION_ID_VALUE_ERROR) unless collection_id
 
@@ -143,7 +167,7 @@ module IbmAppconfigurationRubySdk
 
         if options.key?(:live_config_update_enabled)
           given_flag_value = options[:live_config_update_enabled]
-          if [true, false].include?(given_flag_value)
+          if given_flag_value == true || given_flag_value == false
             default_options[:live_config_update_enabled] = given_flag_value
           else
             report_error("#{Constants::LIVE_CONFIG_UPDATE_OPTION_ERROR} #{given_flag_value}")
@@ -153,9 +177,9 @@ module IbmAppconfigurationRubySdk
         report_error(Constants::CONFIGURATION_FILE_NOT_FOUND_ERROR) if default_options[:live_config_update_enabled] == false && default_options[:bootstrap_file].nil?
       end
 
-      @is_initialized_config = true
+      @context_initialized = true
       @configuration_handler = ConfigurationHandler.instance
-      @configuration_handler.set_context(collection_id, environment_id, default_options)
+      @configuration_handler.set_context(collection_id, environment_id, **default_options)
     end
 
     ##
@@ -163,8 +187,9 @@ module IbmAppconfigurationRubySdk
     # This function must be called before calling the init function
     # @param use_private_endpoint_param [Boolean] Set to true to use private endpoint (default: false)
     def use_private_endpoint(use_private_endpoint_param)
-      if [true, false].include?(use_private_endpoint_param)
+      if use_private_endpoint_param == true || use_private_endpoint_param == false
         @use_private_endpoint = use_private_endpoint_param
+        self.class.configuration.use_private_endpoint = use_private_endpoint_param
         return
       end
       @logger.error(Constants::INPUT_PARAMETER_NOT_BOOLEAN)
@@ -175,7 +200,7 @@ module IbmAppconfigurationRubySdk
     # @param feature_id [String] The Feature ID
     # @return [Feature, nil] Feature object or nil if invalid
     def get_feature(feature_id)
-      return @configuration_handler.get_feature(feature_id) if @is_initialized && @is_initialized_config
+      return @configuration_handler.get_feature(feature_id) if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -185,7 +210,7 @@ module IbmAppconfigurationRubySdk
     # Returns all features associated with the collection_id
     # @return [Hash, nil] Hash of all features or nil
     def get_features
-      return @configuration_handler.get_features if @is_initialized && @is_initialized_config
+      return @configuration_handler.get_features if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -196,7 +221,7 @@ module IbmAppconfigurationRubySdk
     # @param property_id [String] The Property ID
     # @return [Property, nil] Property object or nil if invalid
     def get_property(property_id)
-      return @configuration_handler.get_property(property_id) if @is_initialized && @is_initialized_config
+      return @configuration_handler.get_property(property_id) if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -206,7 +231,7 @@ module IbmAppconfigurationRubySdk
     # Returns all properties associated with the collection_id
     # @return [Hash, nil] Hash of all properties or nil
     def get_properties
-      return @configuration_handler.get_properties if @is_initialized && @is_initialized_config
+      return @configuration_handler.get_properties if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -218,7 +243,7 @@ module IbmAppconfigurationRubySdk
     # @param secrets_manager_service [Object] Secret Manager client object
     # @return [SecretProperty, nil] SecretProperty object or nil
     def get_secret(property_id, secrets_manager_service)
-      if @is_initialized && @is_initialized_config
+      if @initialized && @context_initialized
         return @configuration_handler.get_secret(property_id, secrets_manager_service) if secrets_manager_service
 
         @logger.error(Constants::INVALID_SECRET_MANAGER_CLIENT_MESSAGE)
@@ -233,7 +258,7 @@ module IbmAppconfigurationRubySdk
     # @param event_key [String] SDK event key
     # @param entity_id [String] The entity ID
     def track(event_key, entity_id)
-      return @configuration_handler.track(event_key, entity_id) if @is_initialized && @is_initialized_config
+      return @configuration_handler.track(event_key, entity_id) if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -244,14 +269,15 @@ module IbmAppconfigurationRubySdk
     # By default, logger is disabled
     # @param value [Boolean] Enable (true) or disable (false) debug logging
     def set_debug(value = false)
-      Logger.set_debug(value)
+      Logger.instance.debug = value
+      self.class.configuration.debug = value
     end
 
     ##
     # Check if the SDK is connected to the service
     # @return [Boolean] Connection status
     def connected?
-      return @configuration_handler.connected? if @is_initialized && @is_initialized_config
+      return @configuration_handler.connected? if @initialized && @context_initialized
 
       false
     end
@@ -261,20 +287,16 @@ module IbmAppconfigurationRubySdk
     # The listener will be invoked whenever configurations are updated (initial load or live updates).
     # Only one listener can be registered at a time - calling this method multiple times will replace the previous listener.
     # @param block [Proc] Callback block to be invoked on configuration updates
-    # @example
-    #   app_config = IbmAppconfigurationRubySdk::AppConfiguration.instance
-    #   app_config.register_configuration_update_listener do
-    #     puts "Configurations updated!"
-    #     feature = app_config.get_feature('my-feature')
-    #     # React to configuration changes
-    #   end
     # @return [void]
     def register_configuration_update_listener(&block)
-      if @is_initialized && @is_initialized_config
-        @configuration_handler.register_configuration_update_listener(&block)
+      unless @initialized
+        @logger.error(Constants::COLLECTION_INIT_ERROR)
         return
       end
-      @logger.error(Constants::COLLECTION_INIT_ERROR)
+      # Listener can be registered after init but before set_context —
+      # store it on the handler so it fires on the very first config fetch.
+      @configuration_handler = ConfigurationHandler.instance unless @configuration_handler
+      @configuration_handler.register_configuration_update_listener(&block)
     end
 
     private
@@ -282,10 +304,10 @@ module IbmAppconfigurationRubySdk
     ##
     # Report error and raise exception
     # @param error [String] Error message
-    # @raise [RuntimeError] Always raises with the error message
+    # @raise [ConfigurationError] Always raises with the error message
     def report_error(error)
       @logger.error(error)
-      raise error
+      raise IbmAppconfigurationRubySdk::ConfigurationError, error
     end
   end
 end

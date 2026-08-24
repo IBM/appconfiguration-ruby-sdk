@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Copyright 2026 IBM Corp. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,9 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# frozen_string_literal: true
+require "ibm_appconfiguration_ruby_sdk"
 
-module IbmAppconfigurationRubySdk
-  # Version of the IBM Cloud App Configuration Ruby SDK
-  VERSION = "0.1.0-rc.1"
+RSpec.configure do |config|
+  # Enable flags like --only-failures and --next-failure
+  config.example_status_persistence_file_path = ".rspec_status"
+
+  # Disable RSpec exposing methods globally on `Module` and `main`
+  config.disable_monkey_patching!
+
+  config.expect_with :rspec do |c|
+    c.syntax = :expect
+  end
+
+  # Keep the SDK logger quiet during the test run.
+  config.before(:suite) do
+    IbmAppconfigurationRubySdk::Logger.instance.debug = false
+  end
 end

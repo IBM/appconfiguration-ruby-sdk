@@ -32,7 +32,7 @@ gem install ibm_appconfiguration_ruby_sdk --pre
 Or add this line to your application's Gemfile:
 
 ```ruby
-gem "ibm_appconfiguration_ruby_sdk", "0.1.0.pre.rc.0"
+gem "ibm_appconfiguration_ruby_sdk", "0.1.0.pre.rc.1"
 ```
 
 And then execute:
@@ -56,51 +56,59 @@ Initialize the SDK to connect with your App Configuration service instance.
 ```ruby
 require "ibm_appconfiguration_ruby_sdk"
 
-# Get the singleton instance
-app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
-
-region = "us-south"
-guid = "<guid>"
-apikey = "<apikey>"
-collection_id = "airlines-webapp"
+region         = "us-south"
+guid           = "<guid>"
+apikey         = "<apikey>"
+collection_id  = "airlines-webapp"
 environment_id = "dev"
 
-# Enable debug logging (optional)
-app_config_client.set_debug(true)
+# (Optional) SDK-wide options — call before .instance
+IbmAppconfigurationRubySdk::AppConfiguration.configure do |config|
+  config.debug                = false  # set true for verbose SDK logging
+  config.use_private_endpoint = false  # set true to use IBM private network
+end
 
-# Initialize the SDK
-app_config_client.init(region, guid, apikey)
+# Get the singleton instance
+client = IbmAppconfigurationRubySdk::AppConfiguration.instance
+
+# Initialize the SDK — keyword arguments are required
+client.init(region: region, guid: guid, apikey: apikey)
+
+# Register a listener before set_context so it fires on the very first config fetch
+client.register_configuration_update_listener do
+  # called on every configuration refresh (initial load + live updates)
+end
 
 # Set context
-app_config_client.set_context(collection_id, environment_id)
+client.set_context(collection_id, environment_id)
 ```
 
 > :warning: It is expected that initialization to be done **only once**.
 
-After the SDK is initialized successfully, the feature flags & properties can be retrieved using the `app_config_client` as shown in the below code snippet.
+After the SDK is initialized successfully, the feature flags & properties can be retrieved using the `client` as shown in the below code snippet.
 
 <details><summary>Expand to view the example snippet</summary>
 
 ```ruby
 # Get feature
-feature = app_config_client.get_feature("online-check-in")
+feature = client.get_feature("online-check-in")
 if feature
   result = feature.get_current_value(entity_id, entity_attributes)
-  puts result
+  puts result.value
 end
 
 # Get property
-property = app_config_client.get_property("check-in-charges")
+property = client.get_property("check-in-charges")
 if property
   result = property.get_current_value(entity_id, entity_attributes)
-  puts result
+  puts result.value
 end
 ```
 </details>
 
 where,
-- **region**: Region name where the App Configuration service instance is created. 
-See list of supported locations [here](https://cloud.ibm.com/catalog/services/app-configuration). Eg:- `us-south`, `au-syd`, `eu-gb`, `us-east`, `eu-de`, `ca-tor`, `jp-tok`, `jp-osa` etc.
+- **region**: Region name where the App Configuration service instance is created.
+  See list of supported locations [here](https://cloud.ibm.com/catalog/services/app-configuration). Eg:- `us-south`, `au-syd`, `eu-gb`, `us-east`, `eu-de`, `ca-tor`, `jp-tok`, `jp-osa` etc.
 - **guid**: Instance Id of the App Configuration service. Obtain it from the service credentials section of the App
   Configuration dashboard.
 - **apikey**: ApiKey of the App Configuration service. Obtain it from the service credentials section of the App
@@ -110,22 +118,30 @@ See list of supported locations [here](https://cloud.ibm.com/catalog/services/ap
 
 ### Connect using private network connection (optional)
 
-Set the SDK to connect to App Configuration service by using a private endpoint that is accessible only through the IBM Cloud private network.
+Set the SDK to connect to App Configuration service by using a private endpoint that is accessible only through the IBM Cloud private network. This must be configured before calling `init`.
+
+Via the `configure` block (preferred):
 
 ```ruby
-app_config_client.use_private_endpoint(true)
+IbmAppconfigurationRubySdk::AppConfiguration.configure do |config|
+  config.use_private_endpoint = true
+end
 ```
 
-This must be done before calling the `init` method on the SDK.
+Or directly on the client instance (must be called before `init`):
+
+```ruby
+client.use_private_endpoint(true)
+```
 
 ### (Optional)
 
 In order for your application and SDK to continue its operations even during the unlikely scenario of App Configuration service across your application restarts, you can configure the SDK to work using a persistent cache. The SDK uses the persistent cache to store the App Configuration data that will be available across your application restarts.
 
 ```ruby
-app_config_client.set_context(collection_id, environment_id, {
+client.set_context(collection_id, environment_id,
   persistent_cache_directory: "/var/lib/docker/volumes/"
-})
+)
 ```
 
 * **persistent_cache_directory**: Absolute path to a directory which has read & write permission for the user. The SDK will create a file - `appconfiguration.json` in the specified directory, and it will be used as the persistent cache to store the App Configuration service information.
@@ -139,10 +155,10 @@ Please ensure that the cache file is not lost or deleted in any case. For exampl
 The SDK is also designed to serve configurations, perform feature flag & property evaluations without being connected to App Configuration service.
 
 ```ruby
-app_config_client.set_context(collection_id, environment_id, {
+client.set_context(collection_id, environment_id,
   bootstrap_file: "saflights/flights.json",
   live_config_update_enabled: false
-})
+)
 ```
 
 This usecase will throw error if given `bootstrap_file` is not found or if unable to parse the json coming from the bootstrap file.
@@ -153,13 +169,13 @@ This usecase will throw error if given `bootstrap_file` is not found or if unabl
 ## Get single feature
 
 ```ruby
-feature = app_config_client.get_feature("online-check-in") # feature can be nil in case of an invalid feature id
+feature = client.get_feature("online-check-in") # feature can be nil in case of an invalid feature id
 
 if feature
-  puts "Feature Name: #{feature.get_feature_name}"
-  puts "Feature Id: #{feature.get_feature_id}"
-  puts "Feature Type: #{feature.get_feature_data_type}"
-  if feature.is_enabled?
+  puts "Feature Name: #{feature.name}"
+  puts "Feature Id: #{feature.feature_id}"
+  puts "Feature Type: #{feature.type}"
+  if feature.enabled?
     # feature flag is enabled
   else
     # feature flag is disabled
@@ -170,20 +186,20 @@ end
 ## Get all features
 
 ```ruby
-features = app_config_client.get_features
+features = client.get_features
 feature = features["online-check-in"]
 
 if feature
-  puts "Feature Name: #{feature.get_feature_name}"
-  puts "Feature Id: #{feature.get_feature_id}"
-  puts "Feature Type: #{feature.get_feature_data_type}"
-  puts "Is feature enabled? #{feature.is_enabled?}"
+  puts "Feature Name: #{feature.name}"
+  puts "Feature Id: #{feature.feature_id}"
+  puts "Feature Type: #{feature.type}"
+  puts "Is feature enabled? #{feature.enabled?}"
 end
 ```
 
 ## Evaluate a feature
 
-Use the `feature.get_current_value(entity_id, entity_attributes)` method to evaluate the value of the feature flag. This method returns a Hash containing evaluated value, feature flag enabled status & evaluation details.
+Use the `feature.get_current_value(entity_id, entity_attributes)` method to evaluate the value of the feature flag. This method returns an `EvaluationResult` struct containing the evaluated value, feature flag enabled status, and evaluation details.
 
 ```ruby
 entity_id = "john_doe"
@@ -193,60 +209,48 @@ entity_attributes = {
 }
 
 result = feature.get_current_value(entity_id, entity_attributes)
-puts result[:value] # Evaluated value of the feature flag. The type of evaluated value will match the type of feature flag (Boolean, String, Numeric).
-puts result[:is_enabled] # enabled status.
-puts result[:details] # a Hash containing detailed information of the evaluation. See below
+puts result.value    # Evaluated value of the feature flag. The type matches the feature flag type (Boolean, String, Numeric).
+puts result.enabled  # enabled status (true/false).
+puts result.details  # an EvaluationDetails struct with detailed evaluation information. See below.
 
-# the `result[:details]` will have the following
-puts result[:details][:value_type] # a string value. Example: DISABLED_VALUE
-puts result[:details][:reason] # a string value. Example: Disabled value of the feature flag since the feature flag is disabled.
-puts result[:details][:segment_name] # (only if applicable, else it is nil) a string value containing the segment name for which the feature flag was evaluated.
-puts result[:details][:rollout_percentage_applied] # (only if applicable, else it is nil) a boolean value. True if the entity_id was part of the rollout percentage evaluation, false otherwise.
-puts result[:details][:error_type] # (only if applicable, else it is nil) contains the error message if any error occurred during the evaluation.
+# the `result.details` struct has the following fields:
+puts result.details.value_type                  # e.g. "DISABLED_VALUE"
+puts result.details.rollout_percentage_applied  # (only if applicable, else nil) Boolean
+puts result.details.segment_name               # (only if applicable, else nil) e.g. "premium-users"
+puts result.details.error_type                 # (only if applicable, else nil) error message if evaluation failed
 ```
 
 - **entity_id**: Id of the Entity. This will be a string identifier related to the Entity against which the feature is evaluated. For example, an entity might be an instance of an app that runs on a mobile device, a microservice that runs on the cloud, or a component of infrastructure that runs that microservice. For any entity to interact with App Configuration, it must provide a unique entity ID.
 - **entity_attributes**: A Hash consisting of the attribute name and their values that defines the specified entity. This is an optional parameter if the feature flag is not configured with any targeting definition. If the targeting is configured, then entity_attributes should be provided for the rule evaluation. An attribute is a parameter that is used to define a segment. The SDK uses the attribute values to determine if the specified entity satisfies the targeting rules, and returns the appropriate feature flag value.
 
-## Send custom metrics
-
-Record custom metrics for experiments using the track method. Calling track will queue the metric event, which will be sent in batches to the App Configuration servers.
-
-```ruby
-app_config_client.track(event_key, entity_id)
-```
-
-where
-- **event_key**: The event key for the metric associated with the running experiment. The event key in your metric and the event key in your code must match exactly.
-
 ## Get single property
 
 ```ruby
-property = app_config_client.get_property("check-in-charges") # property can be nil in case of an invalid property id
+property = client.get_property("check-in-charges") # property can be nil in case of an invalid property id
 
 if property
-  puts "Property Name: #{property.get_property_name}"
-  puts "Property Id: #{property.get_property_id}"
-  puts "Property Type: #{property.get_property_data_type}"
+  puts "Property Name: #{property.name}"
+  puts "Property Id: #{property.property_id}"
+  puts "Property Type: #{property.type}"
 end
 ```
 
 ## Get all properties
 
 ```ruby
-properties = app_config_client.get_properties
+properties = client.get_properties
 property = properties["check-in-charges"]
 
 if property
-  puts "Property Name: #{property.get_property_name}"
-  puts "Property Id: #{property.get_property_id}"
-  puts "Property Type: #{property.get_property_data_type}"
+  puts "Property Name: #{property.name}"
+  puts "Property Id: #{property.property_id}"
+  puts "Property Type: #{property.type}"
 end
 ```
 
 ## Evaluate a property
 
-Use the `property.get_current_value(entity_id, entity_attributes)` method to evaluate the value of the property. This method returns a Hash containing evaluated value & evaluation details.
+Use the `property.get_current_value(entity_id, entity_attributes)` method to evaluate the value of the property. This method returns an `EvaluationResult` struct containing the evaluated value and evaluation details.
 
 ```ruby
 entity_id = "john_doe"
@@ -256,14 +260,13 @@ entity_attributes = {
 }
 
 result = property.get_current_value(entity_id, entity_attributes)
-puts result[:value] # Evaluated value of the property. The type of evaluated value will match the type of property (Boolean, String, Numeric).
-puts result[:details] # a Hash containing detailed information of the evaluation. See below
+puts result.value    # Evaluated value of the property. The type matches the property type (Boolean, String, Numeric).
+puts result.details  # an EvaluationDetails struct with detailed evaluation information. See below.
 
-# the `result[:details]` will have the following
-puts result[:details][:value_type] # a string value. Example: DEFAULT_VALUE
-puts result[:details][:reason] # a string value. Example: Default value of the property.
-puts result[:details][:segment_name] # (only if applicable, else it is nil) a string value containing the segment name for which the property was evaluated.
-puts result[:details][:error_type] # (only if applicable, else it is nil) contains the error message if any error occurred during the evaluation.
+# the `result.details` struct has the following fields:
+puts result.details.value_type   # e.g. "DEFAULT_VALUE"
+puts result.details.segment_name # (only if applicable, else nil) e.g. "premium-users"
+puts result.details.error_type   # (only if applicable, else nil) error message if evaluation failed
 ```
 
 - **entity_id**: Id of the Entity. This will be a string identifier related to the Entity against which the property is evaluated. For example, an entity might be an instance of an app that runs on a mobile device, a microservice that runs on the cloud, or a component of infrastructure that runs that microservice. For any entity to interact with App Configuration, it must provide a unique entity ID.
@@ -274,7 +277,7 @@ puts result[:details][:error_type] # (only if applicable, else it is nil) contai
 Explicit method for getting the secret references stored in App Configuration.
 
 ```ruby
-secret_property_object = app_config_client.get_secret(property_id, secrets_manager_service)
+secret_property_object = client.get_secret(property_id, secrets_manager_service)
 ```
 
 - **property_id**: property_id is the unique string identifier, using this we will be able to fetch the property which will provide the necessary metadata to fetch the secret.
@@ -301,69 +304,54 @@ rescue StandardError => e
 end
 ```
 
-## How to access the secret data from a successful response
+## Fetching the client across other modules
 
-<details><summary>Full example:</summary>
-
-```ruby
-require "ibm_appconfiguration_ruby_sdk"
-require "ibm_secrets_manager_sdk"
-
-app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
-
-begin
-  app_config_client.init(region, guid, apikey)
-  app_config_client.set_context(collection_id, environment_id)
-rescue StandardError => e
-  puts "Failed to initialize app configuration sdk: #{e}"
-end
-
-# Initialize Secrets Manager client
-authenticator = IbmCloudSdkCore::Authenticators::IamAuthenticator.new(
-  apikey: "<SECRETS_MANAGER_APIKEY>"
-)
-
-secrets_manager_service = IbmCloudSecretsManagerApiV2::SecretsManagerV2.new(
-  authenticator: authenticator
-)
-secrets_manager_service.service_url = "<SECRETS_MANAGER_INSTANCE_URL>"
-
-begin
-  secret_property_object = app_config_client.get_secret(property_id, secrets_manager_service)
-  response = secret_property_object.get_current_value(entity_id, entity_attributes)
-
-  # For Arbitrary secret type
-  puts response.result["payload"]
-
-  # For username-password secret type
-  puts response.result["username"]
-  puts response.result["password"]
-
-  # For key-value secret type
-  puts response.result["data"]["key1"]
-  puts response.result["data"]["key2"]
-rescue StandardError => e
-  # handle the error
-  puts "Error: #{e}"
-end
-```
-</details>
-
-## Fetching the app_config_client across other modules
-
-Once the SDK is initialized, the app_config_client can be obtained across other modules as shown below:
+Once the SDK is initialized, the client can be obtained across other modules as shown below:
 
 ```ruby
 # **other modules**
 
 require "ibm_appconfiguration_ruby_sdk"
 
-app_config_client = IbmAppconfigurationRubySdk::AppConfiguration.instance
+client = IbmAppconfigurationRubySdk::AppConfiguration.instance
 
-feature = app_config_client.get_feature("online-check-in")
-enabled = feature.is_enabled?
-result = feature.get_current_value(entity_id, entity_attributes)
+feature = client.get_feature("online-check-in")
+result  = feature.get_current_value(entity_id, entity_attributes)
+puts result.value
+puts result.enabled
 ```
+
+## Error handling
+
+The SDK raises typed errors that you can rescue individually or collectively.
+
+```ruby
+begin
+  client.init(region: region, guid: guid, apikey: apikey)
+  client.set_context(collection_id, environment_id)
+rescue IbmAppconfigurationRubySdk::AuthenticationError => e
+  # HTTP 401 — invalid or expired API key
+  warn "Authentication failed (HTTP #{e.http_status}): #{e.message}"
+rescue IbmAppconfigurationRubySdk::APIError => e
+  # Any other HTTP error from the service
+  warn "API error (HTTP #{e.http_status}): #{e.message}"
+rescue IbmAppconfigurationRubySdk::ConfigurationError => e
+  # SDK used incorrectly — e.g. missing init parameters
+  warn "SDK configuration error: #{e.message}"
+end
+```
+
+Error class hierarchy:
+
+| Class | Trigger |
+| --- | --- |
+| `IbmAppconfigurationRubySdk::Error` | Base class — rescue this to catch all SDK errors |
+| `IbmAppconfigurationRubySdk::ConfigurationError` | Incorrect SDK usage (missing params, wrong call order) |
+| `IbmAppconfigurationRubySdk::APIError` | HTTP error from the service (carries `http_status` & `http_body`) |
+| `IbmAppconfigurationRubySdk::AuthenticationError` | HTTP 401 |
+| `IbmAppconfigurationRubySdk::RateLimitError` | HTTP 429 |
+| `IbmAppconfigurationRubySdk::InvalidRequestError` | HTTP 400 / 422 |
+| `IbmAppconfigurationRubySdk::ServerError` | HTTP 5xx |
 
 ## Supported Data types
 
@@ -373,13 +361,13 @@ format accordingly as shown in the below table.
 
 <details><summary>View Table</summary>
 
-| **Feature or Property value**                                                                          | **DataType** | **DataFormat** | **Type of data returned <br> by `get_current_value[:value]`** | **Example output**                                                   |
+| **Feature or Property value**                                                                          | **DataType** | **DataFormat** | **Type of data returned <br> by `result.value`**      | **Example output**                                                   |
 | ------------------------------------------------------------------------------------------------------ | ------------ | -------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
-| `true`                                                                                                 | BOOLEAN      | not applicable | `Boolean`                                                | `true`                                                               |
+| `true`                                                                                                 | BOOLEAN      | not applicable | `Boolean`                                             | `true`                                                               |
 | `25`                                                                                                   | NUMERIC      | not applicable | `Numeric`                                             | `25`                                                                 |
-| "a string text"                                                                                        | STRING       | TEXT           | `String`                                              | `"a string text"`                                                      |
-| <pre>{<br>  "firefox": {<br>    "name": "Firefox",<br>    "pref_url": "about:config"<br>  }<br>}</pre> | STRING       | JSON           | `Hash`                              | `{"firefox"=>{"name"=>"Firefox","pref_url"=>"about:config"}}` |
-| <pre>men:<br>  - John Smith<br>  - Bill Jones<br>women:<br>  - Mary Smith<br>  - Susan Williams</pre>  | STRING       | YAML           | `String`                              | `"men:\n  - John Smith\n  - Bill Jones\nwomen:\n  - Mary Smith\n  - Susan Williams"` |
+| "a string text"                                                                                        | STRING       | TEXT           | `String`                                              | `"a string text"`                                                    |
+| <pre>{<br>  "firefox": {<br>    "name": "Firefox",<br>    "pref_url": "about:config"<br>  }<br>}</pre> | STRING       | JSON           | `Hash`                                                | `{"firefox"=>{"name"=>"Firefox","pref_url"=>"about:config"}}` |
+| <pre>men:<br>  - John Smith<br>  - Bill Jones<br>women:<br>  - Mary Smith<br>  - Susan Williams</pre>  | STRING       | YAML           | `String`                                              | `"men:\n  - John Smith\n  - Bill Jones\nwomen:\n  - Mary Smith\n  - Susan Williams"` |
 
 For property of type secret reference, refer to readme section [evaluate-a-secret-property](#evaluate-a-secret-property)
 </details>
@@ -387,17 +375,17 @@ For property of type secret reference, refer to readme section [evaluate-a-secre
 <details><summary>Feature flag</summary>
 
 ```ruby
-feature = app_config_client.get_feature("json-feature")
-feature.get_feature_data_type # STRING
-feature.get_feature_data_format # JSON
+feature = client.get_feature("json-feature")
+feature.type        # STRING
+feature.data_format # JSON
 
 # Example (traversing the returned Hash)
 result = feature.get_current_value(entity_id, entity_attributes)
-puts result[:value]["key"] # prints the value of the key
+puts result.value["key"] # prints the value of the key
 
-feature = app_config_client.get_feature("yaml-feature")
-feature.get_feature_data_type # STRING
-feature.get_feature_data_format # YAML
+feature = client.get_feature("yaml-feature")
+feature.type        # STRING
+feature.data_format # YAML
 feature.get_current_value(entity_id, entity_attributes)
 ```
 </details>
@@ -405,31 +393,31 @@ feature.get_current_value(entity_id, entity_attributes)
 <details><summary>Property</summary>
 
 ```ruby
-property = app_config_client.get_property("json-property")
-property.get_property_data_type # STRING
-property.get_property_data_format # JSON
+property = client.get_property("json-property")
+property.type        # STRING
+property.data_format # JSON
 
 # Example (traversing the returned Hash)
 result = property.get_current_value(entity_id, entity_attributes)
-puts result[:value]["key"] # prints the value of the key
+puts result.value["key"] # prints the value of the key
 
-property = app_config_client.get_property("yaml-property")
-property.get_property_data_type # STRING
-property.get_property_data_format # YAML
+property = client.get_property("yaml-property")
+property.type        # STRING
+property.data_format # YAML
 property.get_current_value(entity_id, entity_attributes)
 ```
 </details>
 
 ## Set listener for feature and property data changes
 
-The SDK provides a callback mechanism to notify you in real-time when feature flag's or property's configuration changes. You can register a configuration update listener using the same app_config_client.
+The SDK provides a callback mechanism to notify you in real-time when feature flag's or property's configuration changes. Register the listener after `init` but before `set_context` so it fires on the very first configuration fetch.
 
 ```ruby
-app_config_client.register_configuration_update_listener do
+client.register_configuration_update_listener do
   # **add your code**
   # To find the effect of any configuration changes, you can call the feature or property related methods
 
-  # feature = app_config_client.get_feature("online-check-in")
+  # feature = client.get_feature("online-check-in")
   # new_result = feature.get_current_value(entity_id, entity_attributes)
 end
 ```
@@ -439,7 +427,13 @@ end
 Use this method to enable/disable the logging in SDK.
 
 ```ruby
-app_config_client.set_debug(true)
+# Via the configure block (call before .instance)
+IbmAppconfigurationRubySdk::AppConfiguration.configure do |config|
+  config.debug = true
+end
+
+# Or directly on the client instance
+client.set_debug(true)
 ```
 
 ## Examples
@@ -457,7 +451,7 @@ https://{region}.apprapp.cloud.ibm.com:443
 wss://{region}.apprapp.cloud.ibm.com:443
 ```
 
-If opted for private endpoint by setting `app_config_client.use_private_endpoint(true)` then the allowlist will be
+If opted for private endpoint by setting `config.use_private_endpoint = true` (or `client.use_private_endpoint(true)`) then the allowlist will be
 
 ```
 https://cloud.ibm.com:443
