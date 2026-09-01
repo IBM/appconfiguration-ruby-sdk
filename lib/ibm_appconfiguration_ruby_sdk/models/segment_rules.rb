@@ -43,7 +43,7 @@ class SegmentRules
 
   # @return [Boolean, String, Numeric] Rule value
   def get_value
-    @value || ""
+    @value.nil? ? "" : @value
   end
 
   # @return [Integer] Rule order
