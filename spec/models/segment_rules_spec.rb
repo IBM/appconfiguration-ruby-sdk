@@ -37,6 +37,28 @@ RSpec.describe IbmAppconfigurationRubySdk::SegmentRules do
     expect(segment_rule.rule_id).to eq("rule-1")
   end
 
+  describe "#get_value" do
+    context "when value is false" do
+      subject { described_class.new(**segment_rule_hash, value: false).get_value }
+      it { is_expected.to be(false) }
+    end
+
+    context "when value is true" do
+      subject { described_class.new(**segment_rule_hash, value: true).get_value}
+      it { is_expected.to be(true) }
+    end
+
+    context "when value is a string" do
+      subject { described_class.new(**segment_rule_hash, value: "hello world").get_value}
+      it { is_expected.to eq("hello world") }
+    end
+
+    context "when value is nil" do
+      subject { described_class.new(**segment_rule_hash, value: nil).get_value }
+      it { is_expected.to eq("") }
+    end
+  end
+
   it "defaults rollout_type to MANUAL" do
     expect(segment_rule.rollout_type).to eq(IbmAppconfigurationRubySdk::Constants::MANUAL)
   end
