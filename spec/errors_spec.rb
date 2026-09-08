@@ -29,7 +29,7 @@ RSpec.describe IbmAppconfigurationRubySdk do
     end
 
     it "can be raised with a message" do
-      expect { raise described_module::ConfigurationError, "bad config" }
+      expect { raise described_module::ConfigurationError.new("bad config") }
         .to raise_error(described_module::ConfigurationError, "bad config")
     end
   end

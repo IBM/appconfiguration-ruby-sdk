@@ -32,342 +32,342 @@ require_relative "api_manager"
 #   metering.add_metering(guid, env_id, coll_id, entity_id, segment_id, feature_id, nil)
 #
 module IbmAppconfigurationRubySdk
-class Metering
-  include Singleton
+  # Metering client for IBM App Configuration usage metrics
+  class Metering
+    include Singleton
 
-  # Delimiter for composite keys (Unit Separator character)
-  DELIMITER = "\u001F"
+    # Delimiter for composite keys (Unit Separator character)
+    DELIMITER = "\u001F"
 
-  # Metering interval in seconds (10 minutes)
-  METERING_INTERVAL = 600
-  
-  ##
-  # Initialize the Metering singleton
-  def initialize
-    @metering_feature_data = {}
-    @metering_property_data = {}
-    @data_mutex = Mutex.new
-    @metering_url = nil
-    @apikey = nil
-    @metering_thread = nil
-    @logger = Logger.instance
-    start_metering_thread
-  end
-
-  ##
-  # Inner class for storing metering records
-  # Tracks count and latest evaluation time with thread-safe operations
-  class MeteringRecord
-    ##
-    # Initialize a new metering record
-    #
-    # @param time [String] Initial evaluation time in ISO 8601 format
-    def initialize(time)
-      @count = 1
-      @latest_time = time
-      @mutex = Mutex.new
-    end
+    # Metering interval in seconds (10 minutes)
+    METERING_INTERVAL = 600
 
     ##
-    # Increment the count and update latest time if newer
-    #
-    # @param new_time [String] New evaluation time in ISO 8601 format
-    def increment(new_time)
-      @mutex.synchronize do
-        @count += 1
-        @latest_time = new_time if new_time > @latest_time
-      end
-    end
-
-    ##
-    # Get the current count (thread-safe)
-    #
-    # @return [Integer] The evaluation count
-    def get_count
-      @mutex.synchronize { @count }
-    end
-
-    ##
-    # Get the latest evaluation time (thread-safe)
-    #
-    # @return [String] The latest evaluation time
-    def get_latest_time
-      @mutex.synchronize { @latest_time }
-    end
-  end
-
-  ##
-  # Set the metering URL and API key
-  #
-  # @param url [String] The metering endpoint URL
-  # @param apikey [String] The API key for authentication
-  def set_metering_url(url, apikey)
-    @metering_url = url
-    @apikey = apikey
-  end
-
-  ##
-  # Add a metering record for a feature or property evaluation
-  #
-  # @param guid [String] The service instance GUID
-  # @param environment_id [String] The environment ID
-  # @param collection_id [String] The collection ID
-  # @param entity_id [String] The entity ID
-  # @param segment_id [String] The segment ID
-  # @param feature_id [String, nil] The feature ID (nil for property evaluations)
-  # @param property_id [String, nil] The property ID (nil for feature evaluations)
-  def add_metering(guid, environment_id, collection_id, entity_id, segment_id, feature_id, property_id)
-    key = build_composite_key(
-      guid,
-      environment_id,
-      collection_id,
-      feature_id || property_id,
-      entity_id,
-      segment_id
-    )
-
-    data_map = feature_id ? @metering_feature_data : @metering_property_data
-    evaluation_time = current_datetime
-
-    @data_mutex.synchronize do
-      if data_map.key?(key)
-        data_map[key].increment(evaluation_time)
-      else
-        data_map[key] = MeteringRecord.new(evaluation_time)
-      end
-    end
-  end
-
-  ##
-  # Build a composite key from components
-  # Handles nil values by converting to empty strings
-  #
-  # @param guid [String] The service instance GUID
-  # @param env_id [String] The environment ID
-  # @param coll_id [String] The collection ID
-  # @param modify_key [String] The feature or property ID
-  # @param entity_id [String] The entity ID
-  # @param segment_id [String] The segment ID
-  # @return [String] The composite key
-  def build_composite_key(guid, env_id, coll_id, modify_key, entity_id, segment_id)
-    [
-      guid || "",
-      env_id || "",
-      coll_id || "",
-      modify_key || "",
-      entity_id || "",
-      segment_id || ""
-    ].join(DELIMITER)
-  end
-
-  ##
-  # Parse a composite key into its components
-  #
-  # @param composite_key [String] The composite key to parse
-  # @return [Array<String>] Array of key components
-  def parse_composite_key(composite_key)
-    composite_key.split(DELIMITER, -1)
-  end
-
-  ##
-  # Get current datetime in ISO 8601 format
-  #
-  # @return [String] Current datetime string
-  def current_datetime
-    Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-  end
-
-  ##
-  # Send metering data to the server
-  # Atomically swaps data maps to avoid blocking new evaluations
-  #
-  # @return [Hash] The request body that was sent
-  def send_metering
-    # Atomic swap of data maps
-    current_feature_data = nil
-    current_property_data = nil
-
-    @data_mutex.synchronize do
-      current_feature_data = @metering_feature_data
-      current_property_data = @metering_property_data
+    # Initialize the Metering singleton
+    def initialize
       @metering_feature_data = {}
       @metering_property_data = {}
+      @data_mutex = Mutex.new
+      @metering_url = nil
+      @apikey = nil
+      @metering_thread = nil
+      @logger = Logger.instance
+      start_metering_thread
     end
 
-    return {} if current_feature_data.empty? && current_property_data.empty?
+    ##
+    # Inner class for storing metering records
+    # Tracks count and latest evaluation time with thread-safe operations
+    class MeteringRecord
+      ##
+      # Initialize a new metering record
+      #
+      # @param time [String] Initial evaluation time in ISO 8601 format
+      def initialize(time)
+        @count = 1
+        @latest_time = time
+        @mutex = Mutex.new
+      end
 
-    result = {}
+      ##
+      # Increment the count and update latest time if newer
+      #
+      # @param new_time [String] New evaluation time in ISO 8601 format
+      def increment(new_time)
+        @mutex.synchronize do
+          @count += 1
+          @latest_time = new_time if new_time > @latest_time
+        end
+      end
 
-    build_request_body(current_feature_data, result, "feature_id") unless current_feature_data.empty?
-    build_request_body(current_property_data, result, "property_id") unless current_property_data.empty?
+      ##
+      # Get the current count (thread-safe)
+      #
+      # @return [Integer] The evaluation count
+      def count
+        @mutex.synchronize { @count }
+      end
 
-    result.each_value do |data_array|
-      data_array.each do |json|
-        count = json["usages"].length
-        if count > Constants::DEFAULT_USAGE_LIMIT
-          send_split_metering(json, count)
+      ##
+      # Get the latest evaluation time (thread-safe)
+      #
+      # @return [String] The latest evaluation time
+      def latest_time
+        @mutex.synchronize { @latest_time }
+      end
+    end
+
+    ##
+    # Set the metering URL and API key
+    #
+    # @param url [String] The metering endpoint URL
+    # @param apikey [String] The API key for authentication
+    def set_metering_url(url, apikey)
+      @metering_url = url
+      @apikey = apikey
+    end
+
+    ##
+    # Add a metering record for a feature or property evaluation
+    #
+    # @param guid [String] The service instance GUID
+    # @param environment_id [String] The environment ID
+    # @param collection_id [String] The collection ID
+    # @param entity_id [String] The entity ID
+    # @param segment_id [String] The segment ID
+    # @param feature_id [String, nil] The feature ID (nil for property evaluations)
+    # @param property_id [String, nil] The property ID (nil for feature evaluations)
+    def add_metering(guid, environment_id, collection_id, entity_id, segment_id, feature_id, property_id)
+      key = build_composite_key(
+        guid,
+        environment_id,
+        collection_id,
+        feature_id || property_id,
+        entity_id,
+        segment_id
+      )
+
+      data_map = feature_id ? @metering_feature_data : @metering_property_data
+      evaluation_time = current_datetime
+
+      @data_mutex.synchronize do
+        if data_map.key?(key)
+          data_map[key].increment(evaluation_time)
         else
-          send_to_server(json)
+          data_map[key] = MeteringRecord.new(evaluation_time)
         end
       end
     end
 
-    result
-  end
-
-  ##
-  # Build the request body from metering data
-  #
-  # @param send_metering_data [Hash] The metering data to process
-  # @param result [Hash] The result hash to populate
-  # @param key [String] Either 'feature_id' or 'property_id'
-  def build_request_body(send_metering_data, result, key)
-    send_metering_data.each do |composite_key, metering_record|
-      key_parts = parse_composite_key(composite_key)
-      next if key_parts.length != 6
-
-      guid = key_parts[0]
-      environment_id = key_parts[1]
-      collection_id = key_parts[2]
-      feature_or_property_id = key_parts[3]
-      entity_id = key_parts[4]
-      segment_id = key_parts[5]
-
-      # Get or create GUID entry
-      result[guid] ||= []
-
-      # Find or create collection
-      collection = find_or_create_collection(
-        result[guid],
-        environment_id,
-        collection_id
-      )
-
-      # Create usage object
-      usage = {
-        key => feature_or_property_id,
-        "entity_id" => entity_id == Constants::DEFAULT_ENTITY_ID ? nil : entity_id,
-        "segment_id" => segment_id == Constants::DEFAULT_SEGMENT_ID ? nil : segment_id,
-        "evaluation_time" => metering_record.get_latest_time,
-        "count" => metering_record.get_count
-      }
-
-      collection["usages"] << usage
-    end
-  end
-
-  ##
-  # Find or create a collection in the GUID array
-  #
-  # @param guid_array [Array] Array of collections for a GUID
-  # @param environment_id [String] The environment ID
-  # @param collection_id [String] The collection ID
-  # @return [Hash] The collection hash
-  def find_or_create_collection(guid_array, environment_id, collection_id)
-    # Look for existing collection
-    collection = guid_array.find do |coll|
-      coll["environment_id"] == environment_id &&
-        coll["collection_id"] == collection_id
+    ##
+    # Build a composite key from components
+    # Handles nil values by converting to empty strings
+    #
+    # @param guid [String] The service instance GUID
+    # @param env_id [String] The environment ID
+    # @param coll_id [String] The collection ID
+    # @param modify_key [String] The feature or property ID
+    # @param entity_id [String] The entity ID
+    # @param segment_id [String] The segment ID
+    # @return [String] The composite key
+    def build_composite_key(guid, env_id, coll_id, modify_key, entity_id, segment_id)
+      [
+        guid || "",
+        env_id || "",
+        coll_id || "",
+        modify_key || "",
+        entity_id || "",
+        segment_id || ""
+      ].join(DELIMITER)
     end
 
-    # Create new if not found
-    unless collection
-      collection = {
-        "collection_id" => collection_id,
-        "environment_id" => environment_id,
-        "usages" => []
-      }
-      guid_array << collection
+    ##
+    # Parse a composite key into its components
+    #
+    # @param composite_key [String] The composite key to parse
+    # @return [Array<String>] Array of key components
+    def parse_composite_key(composite_key)
+      composite_key.split(DELIMITER, -1)
     end
 
-    collection
-  end
-
-  ##
-  # Send split metering data for large payloads
-  # Splits payloads exceeding DEFAULT_USAGE_LIMIT usages into chunks of DEFAULT_USAGE_LIMIT
-  #
-  # @param data [Hash] The collection data to split
-  # @param count [Integer] Total number of usages
-  def send_split_metering(data, count)
-    lim = 0
-    sub_usages_array = data["usages"]
-
-    while lim < count
-      end_index = [lim + Constants::DEFAULT_USAGE_LIMIT, count].min
-      collections_map = {
-        "collection_id" => data["collection_id"],
-        "environment_id" => data["environment_id"],
-        "usages" => []
-      }
-
-      (lim...end_index).each do |i|
-        collections_map["usages"] << sub_usages_array[i]
-      end
-
-      send_to_server(collections_map)
-      lim += Constants::DEFAULT_USAGE_LIMIT
+    ##
+    # Get current datetime in ISO 8601 format
+    #
+    # @return [String] Current datetime string
+    def current_datetime
+      Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     end
-  end
 
-  ##
-  # Send metering data to the server.
-  # Retries indefinitely with exponential backoff + jitter, capped at ~1 hour —
-  # matching the Node SDK's Metering.js behaviour exactly.
-  #
-  # Both the initial call and every retry thread are fully wrapped in rescue so
-  # that a connection-level crash never silently kills the retry chain — each
-  # thread stays alive and schedules the next attempt regardless of how it failed.
-  #
-  # @param data [Hash] The metering data to send
-  # @param attempt [Integer] Current attempt number (0-based, for backoff calculation)
-  # @param cap_ms [Integer, nil] Cap delay in ms (computed once per payload on first call)
-  def send_to_server(data, attempt = 0, cap_ms = nil)
-    return unless @metering_url && @apikey
+    ##
+    # Send metering data to the server
+    # Atomically swaps data maps to avoid blocking new evaluations
+    #
+    # @return [Hash] The request body that was sent
+    def send_metering
+      # Atomic swap of data maps
+      current_feature_data = nil
+      current_property_data = nil
 
-    # Compute cap once per payload (with jitter), reuse on retries
-    cap_ms ||= metering_compute_cap_delay_ms
-
-    begin
-      response = ApiManager.post_metering(@metering_url, data, @apikey)
-
-      if response.status == Constants::STATUS_CODE_ACCEPTED
-        @logger.info(Constants::SUCCESSFULLY_POSTED_METERING_DATA)
-      else
-        @logger.warning("Metering response status: #{response.status}")
-      end
-    rescue StandardError => e
-      @logger.error("#{Constants::ERROR_POSTING_METERING_DATA}. #{e.class.name} - #{e.message}")
-
-      # Extract HTTP status from the exception (nil for connection-level errors)
-      status = nil
-      if e.respond_to?(:status)
-        status = e.status
-      elsif e.message =~ /status_code.*=>.*(\d{3})/
-        status = ::Regexp.last_match(1).to_i
+      @data_mutex.synchronize do
+        current_feature_data = @metering_feature_data
+        current_property_data = @metering_property_data
+        @metering_feature_data = {}
+        @metering_property_data = {}
       end
 
-      # Mirrors Node SDK: retryable = 5xx || 429 || status undefined (connection/server-down error)
-      # Do NOT retry on 4xx client errors (except 429)
-      retryable = status.nil? || status == 429 || (status >= 500 && status <= 599)
+      return {} if current_feature_data.empty? && current_property_data.empty?
 
-      unless retryable
-        @logger.error("Non-retryable metering error (status #{status}) — giving up.")
-        return
+      result = {}
+
+      build_request_body(current_feature_data, result, "feature_id") unless current_feature_data.empty?
+      build_request_body(current_property_data, result, "property_id") unless current_property_data.empty?
+
+      result.each_value do |data_array|
+        data_array.each do |json|
+          count = json["usages"].length
+          if count > Constants::DEFAULT_USAGE_LIMIT
+            send_split_metering(json, count)
+          else
+            send_to_server(json)
+          end
+        end
       end
 
-      # Exponential backoff with jitter, capped at ~1 hour (same as Node SDK)
-      delay_ms  = metering_compute_next_delay_ms(attempt, cap_ms)
-      delay_min = (delay_ms / 60_000.0).round(2)
-      @logger.info("Retrying metering POST in #{delay_min} min (attempt ##{attempt + 1}, cap #{(cap_ms / 60_000.0).round(2)} min)")
+      result
+    end
 
-      # Capture locals so the retry thread closes over immutable values, not mutable state.
-      next_attempt = attempt + 1
-      frozen_cap   = cap_ms
-      frozen_data  = data
+    ##
+    # Build the request body from metering data
+    #
+    # @param send_metering_data [Hash] The metering data to process
+    # @param result [Hash] The result hash to populate
+    # @param key [String] Either 'feature_id' or 'property_id'
+    def build_request_body(send_metering_data, result, key)
+      send_metering_data.each do |composite_key, metering_record|
+        key_parts = parse_composite_key(composite_key)
+        next if key_parts.length != 6
 
-      Thread.new do
-        begin
+        guid = key_parts[0]
+        environment_id = key_parts[1]
+        collection_id = key_parts[2]
+        feature_or_property_id = key_parts[3]
+        entity_id = key_parts[4]
+        segment_id = key_parts[5]
+
+        # Get or create GUID entry
+        result[guid] ||= []
+
+        # Find or create collection
+        collection = find_or_create_collection(
+          result[guid],
+          environment_id,
+          collection_id
+        )
+
+        # Create usage object
+        usage = {
+          key => feature_or_property_id,
+          "entity_id" => entity_id == Constants::DEFAULT_ENTITY_ID ? nil : entity_id,
+          "segment_id" => segment_id == Constants::DEFAULT_SEGMENT_ID ? nil : segment_id,
+          "evaluation_time" => metering_record.latest_time,
+          "count" => metering_record.count
+        }
+
+        collection["usages"] << usage
+      end
+    end
+
+    ##
+    # Find or create a collection in the GUID array
+    #
+    # @param guid_array [Array] Array of collections for a GUID
+    # @param environment_id [String] The environment ID
+    # @param collection_id [String] The collection ID
+    # @return [Hash] The collection hash
+    def find_or_create_collection(guid_array, environment_id, collection_id)
+      # Look for existing collection
+      collection = guid_array.find do |coll|
+        coll["environment_id"] == environment_id &&
+          coll["collection_id"] == collection_id
+      end
+
+      # Create new if not found
+      unless collection
+        collection = {
+          "collection_id" => collection_id,
+          "environment_id" => environment_id,
+          "usages" => []
+        }
+        guid_array << collection
+      end
+
+      collection
+    end
+
+    ##
+    # Send split metering data for large payloads
+    # Splits payloads exceeding DEFAULT_USAGE_LIMIT usages into chunks of DEFAULT_USAGE_LIMIT
+    #
+    # @param data [Hash] The collection data to split
+    # @param count [Integer] Total number of usages
+    def send_split_metering(data, count)
+      lim = 0
+      sub_usages_array = data["usages"]
+
+      while lim < count
+        end_index = [lim + Constants::DEFAULT_USAGE_LIMIT, count].min
+        collections_map = {
+          "collection_id" => data["collection_id"],
+          "environment_id" => data["environment_id"],
+          "usages" => []
+        }
+
+        (lim...end_index).each do |i|
+          collections_map["usages"] << sub_usages_array[i]
+        end
+
+        send_to_server(collections_map)
+        lim += Constants::DEFAULT_USAGE_LIMIT
+      end
+    end
+
+    ##
+    # Send metering data to the server.
+    # Retries indefinitely with exponential backoff + jitter, capped at ~1 hour —
+    # matching the Node SDK's Metering.js behaviour exactly.
+    #
+    # Both the initial call and every retry thread are fully wrapped in rescue so
+    # that a connection-level crash never silently kills the retry chain — each
+    # thread stays alive and schedules the next attempt regardless of how it failed.
+    #
+    # @param data [Hash] The metering data to send
+    # @param attempt [Integer] Current attempt number (0-based, for backoff calculation)
+    # @param cap_ms [Integer, nil] Cap delay in ms (computed once per payload on first call)
+    def send_to_server(data, attempt = 0, cap_ms = nil)
+      return unless @metering_url && @apikey
+
+      # Compute cap once per payload (with jitter), reuse on retries
+      cap_ms ||= metering_compute_cap_delay_ms
+
+      begin
+        response = ApiManager.post_metering(@metering_url, data, @apikey)
+
+        if response.status == Constants::STATUS_CODE_ACCEPTED
+          @logger.info(Constants::SUCCESSFULLY_POSTED_METERING_DATA)
+        else
+          @logger.warning("Metering response status: #{response.status}")
+        end
+      rescue StandardError => e
+        @logger.error("#{Constants::ERROR_POSTING_METERING_DATA}. #{e.class.name} - #{e.message}")
+
+        # Extract HTTP status from the exception (nil for connection-level errors)
+        status = nil
+        if e.respond_to?(:status)
+          status = e.status
+        elsif e.message =~ /status_code.*=>.*(\d{3})/
+          status = ::Regexp.last_match(1).to_i
+        end
+
+        # Mirrors Node SDK: retryable = 5xx || 429 || status undefined (connection/server-down error)
+        # Do NOT retry on 4xx client errors (except 429)
+        retryable = status.nil? || status == 429 || (status >= 500 && status <= 599)
+
+        unless retryable
+          @logger.error("Non-retryable metering error (status #{status}) — giving up.")
+          return
+        end
+
+        # Exponential backoff with jitter, capped at ~1 hour (same as Node SDK)
+        delay_ms  = metering_compute_next_delay_ms(attempt, cap_ms)
+        delay_min = (delay_ms / 60_000.0).round(2)
+        @logger.info("Retrying metering POST in #{delay_min} min (attempt ##{attempt + 1}, cap #{(cap_ms / 60_000.0).round(2)} min)")
+
+        # Capture locals so the retry thread closes over immutable values, not mutable state.
+        next_attempt = attempt + 1
+        frozen_cap   = cap_ms
+        frozen_data  = data
+
+        Thread.new do
           sleep(delay_ms / 1000.0)
           send_to_server(frozen_data, next_attempt, frozen_cap)
         rescue StandardError => retry_err
@@ -378,57 +378,56 @@ class Metering
         end
       end
     end
-  end
 
-  # Compute base delay with jitter (~2–2.9 minutes), matches Node's computeBaseDelayMs
-  def metering_compute_base_delay_ms
-    base_ms   = 2 * 60 * 1000            # 2 minutes
-    jitter_ms = (0.9 * 60 * 1000 * rand).floor # 0–54 seconds
-    base_ms + jitter_ms
-  end
-
-  # Compute cap delay with jitter (~60–60.59 minutes), matches Node's computeCapDelayMs
-  def metering_compute_cap_delay_ms
-    base_ms        = 60 * 60 * 1000      # 1 hour
-    jitter_seconds = rand(60)            # 0–59 seconds
-    base_ms + (jitter_seconds * 1000)
-  end
-
-  # Exponential backoff capped at cap_ms, matches Node's computeNextDelayMs
-  def metering_compute_next_delay_ms(attempt, cap_ms)
-    [metering_compute_base_delay_ms * (2**attempt), cap_ms].min
-  end
-
-  ##
-  # Start the background metering thread
-  # Sends metering data every 10 minutes
-  def start_metering_thread
-    @metering_thread = Thread.new do
-      loop do
-        sleep(METERING_INTERVAL)
-        begin
-          send_metering
-        rescue StandardError => e
-          @logger.error("Error in metering thread: #{e.class.name} - #{e.message}")
-        end
-      end
+    # Compute base delay with jitter (~2–2.9 minutes), matches Node's computeBaseDelayMs
+    def metering_compute_base_delay_ms
+      base_ms   = 2 * 60 * 1000 # 2 minutes
+      jitter_ms = (0.9 * 60 * 1000 * rand).floor # 0–54 seconds
+      base_ms + jitter_ms
     end
 
-    @metering_thread.abort_on_exception = false
-  end
+    # Compute cap delay with jitter (~60–60.59 minutes), matches Node's computeCapDelayMs
+    def metering_compute_cap_delay_ms
+      base_ms        = 60 * 60 * 1000      # 1 hour
+      jitter_seconds = rand(60)            # 0–59 seconds
+      base_ms + (jitter_seconds * 1000)
+    end
 
-  ##
-  # Stop the metering thread
-  def stop_metering_thread
-    @metering_thread&.kill
-    @metering_thread = nil
-  end
+    # Exponential backoff capped at cap_ms, matches Node's computeNextDelayMs
+    def metering_compute_next_delay_ms(attempt, cap_ms)
+      [metering_compute_base_delay_ms * (2**attempt), cap_ms].min
+    end
 
-  ##
-  # Cleanup method - stops thread and sends remaining data
-  def cleanup
-    stop_metering_thread
-    send_metering # Send any remaining data
+    ##
+    # Start the background metering thread
+    # Sends metering data every 10 minutes
+    def start_metering_thread
+      @metering_thread = Thread.new do
+        loop do
+          sleep(METERING_INTERVAL)
+          begin
+            send_metering
+          rescue StandardError => e
+            @logger.error("Error in metering thread: #{e.class.name} - #{e.message}")
+          end
+        end
+      end
+
+      @metering_thread.abort_on_exception = false
+    end
+
+    ##
+    # Stop the metering thread
+    def stop_metering_thread
+      @metering_thread&.kill
+      @metering_thread = nil
+    end
+
+    ##
+    # Cleanup method - stops thread and sends remaining data
+    def cleanup
+      stop_metering_thread
+      send_metering # Send any remaining data
+    end
   end
-end
 end

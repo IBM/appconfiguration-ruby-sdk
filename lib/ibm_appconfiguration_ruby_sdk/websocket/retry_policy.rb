@@ -15,6 +15,7 @@
 # limitations under the License.
 
 module IbmAppconfigurationRubySdk
+  # Retry configuration for WebSocket reconnection attempts
   class RetryPolicy
     RETRY_CONFIG = {
       initial_delay: 15,

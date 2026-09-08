@@ -38,8 +38,8 @@ Gem::Specification.new do |spec|
   # Runtime dependencies
   spec.add_runtime_dependency "ibm_cloud_sdk_core", "~> 1.1"
   spec.add_runtime_dependency "json", "~> 2.0"
-  spec.add_runtime_dependency "murmurhash3", "~> 0.1"
   spec.add_runtime_dependency "logger"
+  spec.add_runtime_dependency "murmurhash3", "~> 0.1"
   spec.add_runtime_dependency "websocket-driver", "~> 0.7"
 
   # Development dependencies
