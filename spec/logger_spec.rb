@@ -107,9 +107,9 @@ RSpec.describe IbmAppconfigurationRubySdk::Logger do
 
   describe ".set_debug" do
     it "sets debug on the singleton instance" do
-      described_class.set_debug(true)
+      described_class.set_debug(value: true)
       expect(logger.debug).to be(true)
-      described_class.set_debug(false)
+      described_class.set_debug(value: false)
     end
 
     it "defaults to false when called with no argument" do

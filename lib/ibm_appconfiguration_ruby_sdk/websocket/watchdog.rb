@@ -17,6 +17,7 @@
 require_relative "../logger"
 
 module IbmAppconfigurationRubySdk
+  # Watchdog that monitors WebSocket connection health
   class Watchdog
     WATCHDOG_CONFIG = {
       check_interval: 60,

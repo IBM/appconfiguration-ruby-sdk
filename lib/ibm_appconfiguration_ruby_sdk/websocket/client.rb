@@ -17,29 +17,30 @@
 require_relative "connection_manager"
 
 module IbmAppconfigurationRubySdk
-class WebSocketClient
-  def initialize(region:, guid:, apikey:, collection_id:, environment_id:, start_background_retry: false)
-    @manager =
-      IbmAppconfigurationRubySdk::ConnectionManager.new(
-        region: region,
-        guid: guid,
-        apikey: apikey,
-        collection_id: collection_id,
-        environment_id: environment_id,
-        start_background_retry: start_background_retry
-      )
-  end
+  # WebSocket client for live configuration updates
+  class WebSocketClient
+    def initialize(region:, guid:, apikey:, collection_id:, environment_id:, start_background_retry: false)
+      @manager =
+        IbmAppconfigurationRubySdk::ConnectionManager.new(
+          region: region,
+          guid: guid,
+          apikey: apikey,
+          collection_id: collection_id,
+          environment_id: environment_id,
+          start_background_retry: start_background_retry
+        )
+    end
 
-  def connect
-    @manager.connect
-  end
+    def connect
+      @manager.connect
+    end
 
-  def disconnect
-    @manager.disconnect
-  end
+    def disconnect
+      @manager.disconnect
+    end
 
-  def connected?
-    @manager.connected?
+    def connected?
+      @manager.connected?
+    end
   end
-end
 end
