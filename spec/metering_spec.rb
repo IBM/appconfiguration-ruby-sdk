@@ -92,7 +92,7 @@ RSpec.describe IbmAppconfigurationRubySdk::Metering do
 
       allow(IbmAppconfigurationRubySdk::ApiManager).to receive(:post_metering) do
         call_count += 1
-        raise StandardError, "connection refused" if call_count < 3
+        raise StandardError.new("connection refused") if call_count < 3
 
         fake_response
       end
@@ -114,10 +114,10 @@ RSpec.describe IbmAppconfigurationRubySdk::Metering do
         fake_response = double("response", status: 202)
         if payload["collection_id"] == "c1"
           calls_a += 1
-          raise StandardError, "server down" if calls_a < 2
+          raise StandardError.new("server down") if calls_a < 2
         else
           calls_b += 1
-          raise StandardError, "server down" if calls_b < 2
+          raise StandardError.new("server down") if calls_b < 2
         end
         fake_response
       end

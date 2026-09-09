@@ -15,6 +15,7 @@
 # limitations under the License.
 
 module IbmAppconfigurationRubySdk
+  # Socket wrapper for the WebSocket driver
   class DriverSocket
     attr_reader :url
 

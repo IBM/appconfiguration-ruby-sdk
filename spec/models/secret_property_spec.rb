@@ -93,10 +93,10 @@ RSpec.describe IbmAppconfigurationRubySdk::SecretProperty do
           let(:secret_response) { { value: "s3cr3t!" } }
 
           before do
-            allow(handler_double).to receive(:get_secrets_map)
+            allow(handler_double).to receive(:secrets_map)
               .and_return({ "my-secret-prop" => secrets_manager_double })
             allow(secrets_manager_double).to receive(:get_secret).with(id: "secret-123")
-              .and_return(secret_response)
+                                                                 .and_return(secret_response)
           end
 
           it "calls the secrets manager with the secret ID and returns the response" do
@@ -106,7 +106,7 @@ RSpec.describe IbmAppconfigurationRubySdk::SecretProperty do
 
         context "when no secret manager is configured for this property" do
           before do
-            allow(handler_double).to receive(:get_secrets_map).and_return({})
+            allow(handler_double).to receive(:secrets_map).and_return({})
           end
 
           it "returns nil" do
