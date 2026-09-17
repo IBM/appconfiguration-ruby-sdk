@@ -18,42 +18,35 @@ require_relative "../constants"
 
 # SegmentRules model for App Configuration service
 module IbmAppconfigurationRubySdk
-class SegmentRules
-  attr_reader :rules, :rule_id, :value, :order, :rollout_type, :rollout_percentage, :rollout_configuration
+  # SegmentRules model for App Configuration service
+  class SegmentRules
+    attr_reader :rule_id, :order, :rollout_type, :rollout_percentage, :rollout_configuration
 
-  # @param segment_rules [Hash] Segment rules configuration hash
-  def initialize(segment_rules)
-    @rules = segment_rules[:rules]
-    @rule_id = segment_rules[:rule_id]
-    @value = segment_rules[:value]
-    @order = segment_rules[:order]
-    @rollout_type = segment_rules.key?(:rollout_type) ? segment_rules[:rollout_type] : Constants::MANUAL
+    # @param segment_rules [Hash] Segment rules configuration hash
+    def initialize(segment_rules)
+      @rules = segment_rules[:rules]
+      @rule_id = segment_rules[:rule_id]
+      @value = segment_rules[:value]
+      @order = segment_rules[:order]
+      @rollout_type = segment_rules.key?(:rollout_type) ? segment_rules[:rollout_type] : Constants::MANUAL
 
-    if segment_rules[:rollout_configuration]
-      @rollout_configuration = segment_rules[:rollout_configuration]
-    else
-      @rollout_percentage = segment_rules.key?(:rollout_percentage) ? segment_rules[:rollout_percentage] : 100
+      if segment_rules[:rollout_configuration]
+        @rollout_configuration = segment_rules[:rollout_configuration]
+      else
+        @rollout_percentage = segment_rules.key?(:rollout_percentage) ? segment_rules[:rollout_percentage] : 100
+      end
+    end
+
+    # @return [Array<Hash>] Rules array
+    def rules
+      @rules || []
+    end
+
+    # @return [Boolean, String, Numeric] Rule value, defaults to "" when nil
+    def value
+      # Use a nil check so a legitimate `false` rule value is returned as false
+      # instead of being swallowed by Ruby's truthiness (`false || ""` => "").
+      @value.nil? ? "" : @value
     end
   end
-
-  # @return [Array<Hash>] Rules array
-  def get_rules
-    @rules || []
-  end
-
-  # @return [Boolean, String, Numeric] Rule value
-  def get_value
-    @value.nil? ? "" : @value
-  end
-
-  # @return [Integer] Rule order
-  def get_order
-    @order
-  end
-
-  # @return [Integer] Rollout percentage
-  def get_rollout_percentage
-    @rollout_percentage
-  end
-end
 end

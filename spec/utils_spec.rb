@@ -157,7 +157,7 @@ RSpec.describe "configuration utils" do
     it "collects segment IDs from segment_rules into the provided set" do
       resource = {
         segment_rules: [
-          { rules: [{ segments: ["seg-a", "seg-b"] }] },
+          { rules: [{ segments: %w[seg-a seg-b] }] },
           { rules: [{ segments: ["seg-c"] }] }
         ]
       }

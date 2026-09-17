@@ -55,7 +55,7 @@ module IbmAppconfigurationRubySdk
         return unless url
 
         url_builder = UrlBuilder.instance
-        url_builder.set_base_service_url(url)
+        url_builder.base_service_url = url
       end
 
       ##
@@ -66,7 +66,7 @@ module IbmAppconfigurationRubySdk
       def override_websocket_url(url)
         return unless url
 
-        UrlBuilder.instance.set_override_websocket_url(url)
+        UrlBuilder.instance.override_websocket_url = url
       end
 
       ##
@@ -115,7 +115,7 @@ module IbmAppconfigurationRubySdk
 
       @configuration_handler = ConfigurationHandler.instance
       @configuration_handler.init(region: region, guid: guid, apikey: apikey,
-                                   use_private_endpoint: @use_private_endpoint)
+                                  use_private_endpoint: @use_private_endpoint)
       @initialized = true
     end
 
@@ -167,7 +167,7 @@ module IbmAppconfigurationRubySdk
 
         if options.key?(:live_config_update_enabled)
           given_flag_value = options[:live_config_update_enabled]
-          if given_flag_value == true || given_flag_value == false
+          if [true, false].include?(given_flag_value)
             default_options[:live_config_update_enabled] = given_flag_value
           else
             report_error("#{Constants::LIVE_CONFIG_UPDATE_OPTION_ERROR} #{given_flag_value}")
@@ -187,7 +187,7 @@ module IbmAppconfigurationRubySdk
     # This function must be called before calling the init function
     # @param use_private_endpoint_param [Boolean] Set to true to use private endpoint (default: false)
     def use_private_endpoint(use_private_endpoint_param)
-      if use_private_endpoint_param == true || use_private_endpoint_param == false
+      if [true, false].include?(use_private_endpoint_param)
         @use_private_endpoint = use_private_endpoint_param
         self.class.configuration.use_private_endpoint = use_private_endpoint_param
         return
@@ -209,8 +209,8 @@ module IbmAppconfigurationRubySdk
     ##
     # Returns all features associated with the collection_id
     # @return [Hash, nil] Hash of all features or nil
-    def get_features
-      return @configuration_handler.get_features if @initialized && @context_initialized
+    def features
+      return @configuration_handler.features if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -230,8 +230,8 @@ module IbmAppconfigurationRubySdk
     ##
     # Returns all properties associated with the collection_id
     # @return [Hash, nil] Hash of all properties or nil
-    def get_properties
-      return @configuration_handler.get_properties if @initialized && @context_initialized
+    def properties
+      return @configuration_handler.properties if @initialized && @context_initialized
 
       @logger.error(Constants::COLLECTION_INIT_ERROR)
       nil
@@ -268,7 +268,7 @@ module IbmAppconfigurationRubySdk
     # Enable or disable the logger
     # By default, logger is disabled
     # @param value [Boolean] Enable (true) or disable (false) debug logging
-    def set_debug(value = false)
+    def set_debug(value: false)
       Logger.instance.debug = value
       self.class.configuration.debug = value
     end
@@ -295,7 +295,7 @@ module IbmAppconfigurationRubySdk
       end
       # Listener can be registered after init but before set_context —
       # store it on the handler so it fires on the very first config fetch.
-      @configuration_handler = ConfigurationHandler.instance unless @configuration_handler
+      @configuration_handler ||= ConfigurationHandler.instance
       @configuration_handler.register_configuration_update_listener(&block)
     end
 
@@ -307,7 +307,7 @@ module IbmAppconfigurationRubySdk
     # @raise [ConfigurationError] Always raises with the error message
     def report_error(error)
       @logger.error(error)
-      raise IbmAppconfigurationRubySdk::ConfigurationError, error
+      raise IbmAppconfigurationRubySdk::ConfigurationError.new(error)
     end
   end
 end

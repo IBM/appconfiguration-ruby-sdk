@@ -45,9 +45,7 @@ module SslNoVerify
 end
 
 # Prepend only once — idempotent guard.
-unless OpenSSL::SSL::SSLContext.ancestors.include?(SslNoVerify)
-  OpenSSL::SSL::SSLContext.prepend(SslNoVerify)
-end
+OpenSSL::SSL::SSLContext.prepend(SslNoVerify) unless OpenSSL::SSL::SSLContext.ancestors.include?(SslNoVerify)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MockWssServer
@@ -80,12 +78,12 @@ class MockWssServer
     c.subject    = OpenSSL::X509::Name.parse("/CN=localhost")
     c.issuer     = c.subject
     c.public_key = KEY.public_key
-    c.sign(KEY, OpenSSL::Digest::SHA256.new)
+    c.sign(KEY, OpenSSL::Digest.new("SHA256"))
     c
   end
 
   def initialize
-    @tcp_server = TCPServer.new("127.0.0.1", 0)   # 0 → OS-assigned free port
+    @tcp_server = TCPServer.new("127.0.0.1", 0) # 0 → OS-assigned free port
     @port       = @tcp_server.addr[1]
 
     # Build the server SSL context directly using the C-level ivar assignment
@@ -114,9 +112,21 @@ class MockWssServer
   def stop
     @reader_thread&.kill
     @accept_thread&.kill
-    @conn&.close rescue nil
-    @ssl_server.close rescue nil
-    @tcp_server.close rescue nil
+    begin
+      @conn&.close
+    rescue StandardError
+      nil
+    end
+    begin
+      @ssl_server.close
+    rescue StandardError
+      nil
+    end
+    begin
+      @tcp_server.close
+    rescue StandardError
+      nil
+    end
   end
 
   # Send a WebSocket text frame to the connected client.
@@ -168,8 +178,16 @@ class MockWssServer
         @msg_cv.broadcast
       end
     end
-    @driver.on(:close) { @conn.close rescue nil }
-    @driver.on(:error) { @conn.close rescue nil }
+    @driver.on(:close) do
+      @conn.close
+    rescue StandardError
+      nil
+    end
+    @driver.on(:error) do
+      @conn.close
+    rescue StandardError
+      nil
+    end
 
     @reader_thread = Thread.new do
       loop do
@@ -228,7 +246,7 @@ module WsTestHelpers
     builder.guid              = "test-guid"
     builder.apikey            = "test-apikey"
     builder.use_private_endpoint = false
-    builder.base_service_url  = nil
+    builder.base_service_url = nil
     builder.instance_variable_set(
       :@websocket_full_url,
       "wss://localhost:#{server.port}/apprapp/wsfeature?instance_id=test-guid&collection_id=col&environment_id=env"
@@ -301,7 +319,7 @@ RSpec.describe IbmAppconfigurationRubySdk::WebSocketClient do
     it "returns true after a successful WebSocket handshake with the mock server" do
       client.connect
       server.wait_for_open
-      sleep 0.15     # let the :open callback transition state
+      sleep 0.15 # let the :open callback transition state
       expect(client.connected?).to be(true)
       client.disconnect
     end
@@ -387,7 +405,7 @@ RSpec.describe IbmAppconfigurationRubySdk::ConnectionManager do
       before_hb = manager.last_heartbeat_at
       sleep 0.05
       server.send_message("test message")
-      sleep 0.25   # reader thread processes the frame
+      sleep 0.25 # reader thread processes the frame
 
       expect(manager.last_heartbeat_at).to be >= before_hb
       manager.disconnect
