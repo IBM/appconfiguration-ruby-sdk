@@ -20,51 +20,52 @@ require_relative "logger"
 # This module provides methods that perform the store and retrieve operations on the
 # file based cache of the SDK.
 module IbmAppconfigurationRubySdk
-class FileManager
-  include Singleton
+  # Store and retrieve operations on the file based cache of the SDK
+  class FileManager
+    include Singleton
 
-  def initialize
-    @logger = Logger.instance
-  end
-
-  def store_files(json, file_path)
-    File.write(file_path, json)
-  end
-
-  def read_persistent_cache_configurations(file_path)
-    unless File.exist?(file_path)
-      @logger.log(Constants::PERSISTENT_CACHE_FILE_NOT_FOUND)
-      return ""
+    def initialize
+      @logger = Logger.instance
     end
 
-    data = File.read(file_path).strip
-
-    if data.empty?
-      @logger.log(Constants::PERSISTENT_CACHE_FILE_EMPTY)
-      return ""
+    def store_files(json, file_path)
+      File.write(file_path, json)
     end
 
-    data
-  rescue StandardError
-    ""
+    def read_persistent_cache_configurations(file_path)
+      unless File.exist?(file_path)
+        @logger.log(Constants::PERSISTENT_CACHE_FILE_NOT_FOUND)
+        return ""
+      end
+
+      data = File.read(file_path).strip
+
+      if data.empty?
+        @logger.log(Constants::PERSISTENT_CACHE_FILE_EMPTY)
+        return ""
+      end
+
+      data
+    rescue StandardError
+      ""
+    end
+
+    def read_bootstrap_configurations_from_file(file_path)
+      raise "given bootstrap file path doesn't exist: #{file_path}" unless File.exist?(file_path)
+
+      data = File.read(file_path).strip
+
+      raise "given bootstrap file is empty: #{file_path}" if data.empty?
+
+      data
+    end
+
+    def delete_file_data(file_path)
+      return unless File.exist?(file_path)
+
+      File.truncate(file_path, 0)
+    rescue StandardError => e
+      @logger.warning(e)
+    end
   end
-
-  def read_bootstrap_configurations_from_file(file_path)
-    raise "given bootstrap file path doesn't exist: #{file_path}" unless File.exist?(file_path)
-
-    data = File.read(file_path).strip
-
-    raise "given bootstrap file is empty: #{file_path}" if data.empty?
-
-    data
-  end
-
-  def delete_file_data(file_path)
-    return unless File.exist?(file_path)
-
-    File.truncate(file_path, 0)
-  rescue StandardError => e
-    @logger.warning(e)
-  end
-end
 end

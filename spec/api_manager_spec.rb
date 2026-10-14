@@ -43,7 +43,7 @@ RSpec.describe IbmAppconfigurationRubySdk::ApiManager do
     end
 
     it "adds Content-Type for a POST request" do
-      h = described_class.headers(true)
+      h = described_class.headers(is_post: true)
       expect(h["Content-Type"]).to eq("application/json")
     end
   end

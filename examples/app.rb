@@ -14,19 +14,19 @@ require_relative "../lib/ibm_appconfiguration_ruby_sdk"
 # ---------------------------------------------------------------------------
 # 1. Credentials — fill these in
 # ---------------------------------------------------------------------------
-REGION         = 
-GUID           = 
-APIKEY         =  
-COLLECTION_ID  = 
-ENVIRONMENT_ID = 
+REGION =
+  GUID =
+    APIKEY =
+      COLLECTION_ID  =
+        ENVIRONMENT_ID =
 
-# ---------------------------------------------------------------------------
-# 2. SDK-wide options via the block-configure pattern
-# ---------------------------------------------------------------------------
-IbmAppconfigurationRubySdk::AppConfiguration.configure do |config|
-  config.debug                = false   # set true for verbose SDK logging
-  config.use_private_endpoint = false   # set true to use IBM private network
-end
+          # ---------------------------------------------------------------------------
+          # 2. SDK-wide options via the block-configure pattern
+          # ---------------------------------------------------------------------------
+          IbmAppconfigurationRubySdk::AppConfiguration.configure do |config|
+            config.debug                = false   # set true for verbose SDK logging
+            config.use_private_endpoint = false   # set true to use IBM private network
+          end
 
 # ---------------------------------------------------------------------------
 # 3. Initialise the SDK
@@ -50,7 +50,6 @@ def initialize_app_config
   sleep 3 # allow initial fetch + WebSocket handshake to settle
 
   client
-
 rescue IbmAppconfigurationRubySdk::AuthenticationError => e
   warn "\n[fatal] Authentication failed (HTTP #{e.http_status}): #{e.message}"
   warn "        Check that APIKEY is a valid, non-expired service credential."

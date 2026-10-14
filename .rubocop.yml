@@ -42,7 +42,7 @@ Layout/LineLength:
   URISchemes:
     - http
     - https
-  IgnoreCopDirectives: false
+  AllowCopDirectives: false
   AllowedPatterns: [ ]
   Enabled: false
 Metrics/MethodLength:

@@ -19,6 +19,7 @@ require "logger"
 require "singleton"
 
 module IbmAppconfigurationRubySdk
+  # Logger class for SDK logging — delegates to stdlib ::Logger
   class Logger
     include Singleton
 
@@ -37,7 +38,7 @@ module IbmAppconfigurationRubySdk
 
     # Backward-compatible class-level shim — delegates to the singleton instance.
     # @param value [Boolean]
-    def self.set_debug(value = false)
+    def self.set_debug(value: false)
       instance.debug = value
     end
 

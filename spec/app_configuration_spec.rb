@@ -25,9 +25,9 @@ RSpec.describe IbmAppconfigurationRubySdk::AppConfiguration do
       init: nil,
       set_context: nil,
       get_feature: nil,
-      get_features: {},
+      features: {},
       get_property: nil,
-      get_properties: {},
+      properties: {},
       get_secret: nil,
       track: nil,
       connected?: false,
@@ -104,15 +104,15 @@ RSpec.describe IbmAppconfigurationRubySdk::AppConfiguration do
   # .override_service_url
   # ──────────────────────────────────────────────────────────
   describe ".override_service_url" do
-    it "delegates to UrlBuilder#set_base_service_url" do
+    it "delegates to UrlBuilder#base_service_url=" do
       builder = IbmAppconfigurationRubySdk::UrlBuilder.instance
-      expect(builder).to receive(:set_base_service_url).with("https://custom.example.com")
+      expect(builder).to receive(:base_service_url=).with("https://custom.example.com")
       described_class.override_service_url("https://custom.example.com")
     end
 
     it "does nothing when url is nil" do
       builder = IbmAppconfigurationRubySdk::UrlBuilder.instance
-      expect(builder).not_to receive(:set_base_service_url)
+      expect(builder).not_to receive(:base_service_url=)
       described_class.override_service_url(nil)
     end
   end
@@ -229,14 +229,14 @@ RSpec.describe IbmAppconfigurationRubySdk::AppConfiguration do
 
   describe "#get_features" do
     it "returns nil when not initialized" do
-      expect(app_config.get_features).to be_nil
+      expect(app_config.features).to be_nil
     end
 
     it "delegates to handler when fully initialized" do
       app_config.init(region: "r", guid: "g", apikey: "k")
       app_config.instance_variable_set(:@context_initialized, true)
-      allow(handler_double).to receive(:get_features).and_return({ "f1" => double })
-      expect(app_config.get_features).to be_a(Hash)
+      allow(handler_double).to receive(:features).and_return({ "f1" => double })
+      expect(app_config.features).to be_a(Hash)
     end
   end
 
@@ -259,7 +259,7 @@ RSpec.describe IbmAppconfigurationRubySdk::AppConfiguration do
 
   describe "#get_properties" do
     it "returns nil when not initialized" do
-      expect(app_config.get_properties).to be_nil
+      expect(app_config.properties).to be_nil
     end
   end
 
@@ -311,20 +311,20 @@ RSpec.describe IbmAppconfigurationRubySdk::AppConfiguration do
     after { IbmAppconfigurationRubySdk::Logger.instance.debug = false }
 
     it "sets the logger debug flag to true" do
-      app_config.set_debug(true)
+      app_config.set_debug(value: true)
       expect(IbmAppconfigurationRubySdk::Logger.instance.debug).to be(true)
     end
 
     it "sets it to false when called with false" do
-      app_config.set_debug(true)
-      app_config.set_debug(false)
+      app_config.set_debug(value: true)
+      app_config.set_debug(value: false)
       expect(IbmAppconfigurationRubySdk::Logger.instance.debug).to be(false)
     end
 
     it "also updates the Configuration object" do
-      app_config.set_debug(true)
+      app_config.set_debug(value: true)
       expect(described_class.configuration.debug).to be(true)
-      app_config.set_debug(false)
+      app_config.set_debug(value: false)
     end
   end
 
